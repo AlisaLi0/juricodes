@@ -100,9 +100,23 @@ function renderCases(casesEl, turnId, cases) {
     card.className = 'case';
     card.id = `case-${turnId}-${n}`;
     const cites = (c.citations || []).slice(0, 3).join(' · ');
+    // Cytator (treatment) badge: good-law signal from how often/recently the
+    // case is cited by later opinions.
+    let cyt = '';
+    if (c.cited_by != null) {
+      const label = {
+        'landmark': 'Landmark',
+        'frequently-cited': 'Frequently cited',
+        'cited': 'Cited',
+        'rarely-cited': 'Rarely cited',
+      }[c.treatment] || 'Cited';
+      const recent = c.last_cited ? `, latest ${escapeHtml(c.last_cited)}` : '';
+      cyt = `<span class="cytator cyt-${escapeHtml(c.treatment || 'cited')}" title="Cited by ${c.cited_by} later opinions${recent}. Citation-frequency signal, not a negative-history (overruled) check.">▣ ${label} · cited by ${c.cited_by}${recent}</span>`;
+    }
     card.innerHTML = `
       <div class="row1"><span class="num">${n}</span><span class="title">${escapeHtml(c.title)}</span><span class="verified">Verified</span></div>
       <div class="meta">${escapeHtml(c.court || '')}${c.date ? ' · ' + escapeHtml(c.date) : ''}${c.cite_count ? ' · cited by ' + c.cite_count : ''}</div>
+      ${cyt ? `<div class="treatment">${cyt}</div>` : ''}
       ${cites ? `<div class="cites">${escapeHtml(cites)}</div>` : ''}
       ${c.snippet ? `<div class="snip">${escapeHtml(c.snippet.slice(0, 280))}…</div>` : ''}
       ${c.url ? `<a class="open" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">Open full opinion ↗</a>` : ''}`;

@@ -121,9 +121,14 @@ def _case_block(cases: list) -> str:
     for i, c in enumerate(cases, 1):
         cite = "; ".join(c.citations[:3]) if c.citations else "no reporter cite"
         snip = (c.snippet or "")[:300]
+        treat = ""
+        if getattr(c, "cited_by", None) is not None:
+            treat = (f" Treatment: cited by {c.cited_by} later opinions"
+                     + (f", most recently {c.last_cited}" if c.last_cited else "")
+                     + (f" ({c.treatment})." if c.treatment else "."))
         lines.append(
             f"[{i}] {c.title} — {c.court}, {c.date} ({cite}); "
-            f"cited by {c.cite_count}. Excerpt: {snip}"
+            f"cited by {c.cite_count}.{treat} Excerpt: {snip}"
         )
     return "\n".join(lines)
 
@@ -223,6 +228,15 @@ async def chat(request: Request):
             yield _sse("status", {"message":
                        f"Those weren't on point - refining search: {new_query}"})
             query = new_query
+
+        # Cytator: check how each leading case has been treated (cited by later
+        # opinions, how recently) as a good-law signal. Best-effort, never fatal.
+        if cases:
+            yield _sse("status", {"message": "Verifying how these authorities have been treated…"})
+            try:
+                await cl.attach_treatment(cases, top=6)
+            except Exception:
+                pass
 
         yield _sse("cases", {"query": query, "court": court,
                              "count": len(cases),

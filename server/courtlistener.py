@@ -37,6 +37,12 @@ class Case:
     status: str = ""
     snippet: str = ""
     url: str = ""
+    # Cytator (treatment) signal: how many later opinions cite this one and how
+    # recently — a proxy for whether the case is still "good law". Populated by
+    # CourtListener.attach_treatment(); None means not checked.
+    cited_by: int | None = None
+    last_cited: str = ""
+    treatment: str = ""  # one of: "", "landmark", "frequently-cited", "cited", "rarely-cited"
 
     def to_dict(self) -> dict:
         return {
@@ -50,6 +56,9 @@ class Case:
             "status": self.status,
             "snippet": self.snippet,
             "url": self.url,
+            "cited_by": self.cited_by,
+            "last_cited": self.last_cited,
+            "treatment": self.treatment,
         }
 
 
@@ -87,6 +96,22 @@ def _rrf_fuse(rankings: list[list[dict]], *, k: int = 60) -> list[dict]:
 
     ordered = sorted(first.values(), key=lambda r: _final(_result_key(r)), reverse=True)
     return ordered
+
+
+def _treatment_label(cited_by: int) -> str:
+    """Coarse good-law signal from how many later opinions cite this one.
+
+    This is a citation-frequency proxy, NOT a Shepard's/KeyCite negative-history
+    check - it says how influential/established a case is, not whether it was
+    overruled. The UI labels it accordingly.
+    """
+    if cited_by >= 1000:
+        return "landmark"
+    if cited_by >= 100:
+        return "frequently-cited"
+    if cited_by >= 5:
+        return "cited"
+    return "rarely-cited"
 
 
 class CourtListener:
@@ -144,6 +169,47 @@ class CourtListener:
         fused = _rrf_fuse([by_score, by_cites], k=60)
         rows = fused[: max(1, min(max_results, 20))]
         return [self._parse(r) for r in rows]
+
+    async def cited_by(self, cluster_id: str) -> tuple[int, str]:
+        """Cytator-lite: how many later opinions cite this case, and the most
+        recent citing date. Uses the anonymous `cites:(cluster_id)` search.
+
+        Returns (count, last_cited_date). Degrades to (0, "") on any error so it
+        never blocks the main answer.
+        """
+        cid = str(cluster_id or "").strip()
+        if not cid.isdigit():
+            return 0, ""
+        try:
+            data = await self._get(
+                "/search/",
+                {"q": f"cites:({cid})", "type": "o", "order_by": "dateFiled desc"},
+            )
+        except Exception:
+            return 0, ""
+        count = int(data.get("count") or 0)
+        results = data.get("results") or []
+        last = (results[0].get("dateFiled") or "")[:10] if results else ""
+        return count, last
+
+    async def attach_treatment(self, cases: list[Case], *, top: int = 6) -> None:
+        """Populate cited_by / last_cited / treatment for the first `top` cases,
+        concurrently. Mutates the Case objects in place. Best-effort: any case
+        whose lookup fails just keeps treatment unset.
+        """
+        targets = [c for c in cases[:top] if str(c.id).isdigit()]
+        if not targets:
+            return
+        results = await asyncio.gather(
+            *(self.cited_by(c.id) for c in targets), return_exceptions=True
+        )
+        for c, res in zip(targets, results):
+            if isinstance(res, Exception):
+                continue
+            count, last = res
+            c.cited_by = count
+            c.last_cited = last
+            c.treatment = _treatment_label(count)
 
     def _parse(self, r: dict) -> Case:
         abs_url = r.get("absolute_url") or ""
