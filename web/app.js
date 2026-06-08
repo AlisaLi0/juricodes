@@ -36,10 +36,31 @@ function renderWithCites(text, turnId) {
 
 function scrollDown() { chat.scrollTop = chat.scrollHeight; }
 
+// The visible research workflow (mirrors the backend SSE phases).
+const STEPS = [['analyze', 'Analyze'], ['search', 'Search'], ['authorities', 'Authorities'], ['answer', 'Answer']];
+
+function buildStepper() {
+  return STEPS.map(([k, lbl], i) =>
+    `${i ? '<div class="step-sep"></div>' : ''}` +
+    `<div class="step" data-step="${k}"><span class="dot"><span class="n">${i + 1}</span></span><span class="lbl">${lbl}</span></div>`
+  ).join('');
+}
+
+// Set a step to 'active' | 'done' | '' (pending). Optionally mark all earlier as done.
+function setStep(turnEl, key, state, completeEarlier) {
+  const idx = STEPS.findIndex(([k]) => k === key);
+  STEPS.forEach(([k], i) => {
+    const el = turnEl.querySelector(`.step[data-step="${k}"]`);
+    if (!el) return;
+    if (completeEarlier && i < idx) el.className = 'step done';
+    else if (k === key) el.className = 'step ' + state;
+  });
+}
+
 function addUser(text) {
   const el = document.createElement('div');
-  el.className = 'msg user';
-  el.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+  el.className = 'turn user';
+  el.innerHTML = `<div class="qcard"><span class="ql">Question</span><span class="qt">${escapeHtml(text)}</span></div>`;
   chat.appendChild(el);
   scrollDown();
 }
@@ -47,18 +68,25 @@ function addUser(text) {
 function newBotTurn() {
   const turnId = ++turnSeq;
   const el = document.createElement('div');
-  el.className = 'msg bot';
+  el.className = 'turn bot';
   el.dataset.turn = turnId;
   el.innerHTML = `
+    <div class="stepper">${buildStepper()}</div>
     <div class="status"><span class="spinner"></span><span class="status-text">…</span></div>
-    <div class="cases"></div>
+    <div class="authorities" style="display:none">
+      <div class="auth-head">Table of Authorities <span class="cnt"></span></div>
+      <div class="cases"></div>
+    </div>
     <div class="answer" style="display:none"></div>`;
   chat.appendChild(el);
+  setStep(el, 'analyze', 'active');
   scrollDown();
   return {
-    turnId,
+    turnId, el,
     statusEl: el.querySelector('.status'),
     statusText: el.querySelector('.status-text'),
+    authEl: el.querySelector('.authorities'),
+    authCnt: el.querySelector('.auth-head .cnt'),
     casesEl: el.querySelector('.cases'),
     answerEl: el.querySelector('.answer'),
   };
@@ -73,7 +101,7 @@ function renderCases(casesEl, turnId, cases) {
     card.id = `case-${turnId}-${n}`;
     const cites = (c.citations || []).slice(0, 3).join(' · ');
     card.innerHTML = `
-      <div class="row1"><span class="num">${n}</span><span class="title">${escapeHtml(c.title)}</span></div>
+      <div class="row1"><span class="num">${n}</span><span class="title">${escapeHtml(c.title)}</span><span class="verified">Verified</span></div>
       <div class="meta">${escapeHtml(c.court || '')}${c.date ? ' · ' + escapeHtml(c.date) : ''}${c.cite_count ? ' · cited by ' + c.cite_count : ''}</div>
       ${cites ? `<div class="cites">${escapeHtml(cites)}</div>` : ''}
       ${c.snippet ? `<div class="snip">${escapeHtml(c.snippet.slice(0, 280))}…</div>` : ''}
@@ -100,6 +128,7 @@ async function send(text) {
   document.querySelector('.intro')?.remove();
 
   addUser(text);
+  pushHistory(text);
   messages.push({ role: 'user', content: text });
 
   const t = newBotTurn();
@@ -135,19 +164,30 @@ async function send(text) {
 
         if (ev === 'status') {
           t.statusText.textContent = obj.message || '…';
+          if (/^search/i.test(obj.message || '')) setStep(t.el, 'search', 'active', true);
+          else setStep(t.el, 'analyze', 'active');
         } else if (ev === 'clarify') {
           clarified = obj.question || '';
+          setStep(t.el, 'analyze', 'done');
+          t.statusEl.style.display = 'none';
           t.answerEl.style.display = '';
           t.answerEl.className = 'answer clarify';
           t.answerEl.textContent = obj.question || '';
         } else if (ev === 'cases') {
           t.statusText.textContent = obj.count
-            ? `Found ${obj.count} case${obj.count > 1 ? 's' : ''} for: ${obj.query}`
-            : `No cases for: ${obj.query}`;
-          renderCases(t.casesEl, t.turnId, obj.cases || []);
+            ? `Found ${obj.count} authorit${obj.count > 1 ? 'ies' : 'y'} for: ${obj.query}`
+            : `No authorities for: ${obj.query}`;
+          setStep(t.el, 'authorities', 'done', true);
+          setStep(t.el, 'answer', 'active');
+          if (obj.count) {
+            t.authEl.style.display = '';
+            t.authCnt.textContent = '· ' + obj.count;
+            renderCases(t.casesEl, t.turnId, obj.cases || []);
+          }
           scrollDown();
         } else if (ev === 'token') {
           answerRaw += obj.text || '';
+          setStep(t.el, 'answer', 'active', true);
           t.answerEl.style.display = '';
           t.answerEl.innerHTML = renderWithCites(answerRaw, t.turnId);
           scrollDown();
@@ -156,6 +196,7 @@ async function send(text) {
           t.answerEl.className = 'answer note';
           t.answerEl.textContent = obj.message || 'Something went wrong.';
         } else if (ev === 'done') {
+          if (!clarified) setStep(t.el, 'answer', 'done', true);
           t.statusEl.style.display = 'none';
         }
       }
@@ -190,3 +231,54 @@ input.addEventListener('keydown', (e) => {
 
 document.querySelectorAll('.ex').forEach((b) =>
   b.addEventListener('click', () => { send(b.textContent); }));
+
+// ── Sidebar: mobile drawer ───────────────────────────────────────
+const app = document.querySelector('.app');
+function closeNav() { app.classList.remove('nav-open'); }
+document.getElementById('hamburger')?.addEventListener('click', () => app.classList.toggle('nav-open'));
+app.addEventListener('click', (e) => {
+  if (app.classList.contains('nav-open') && !e.target.closest('.sidebar') && !e.target.closest('.hamburger')) closeNav();
+});
+
+// ── Sidebar: research history (localStorage) ─────────────────────
+const HKEY = 'leagle-history';
+const historyEl = document.getElementById('history');
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HKEY)) || []; } catch { return []; } }
+function saveHistory(arr) { try { localStorage.setItem(HKEY, JSON.stringify(arr.slice(0, 30))); } catch (e) { /* ignore */ } }
+function pushHistory(q) {
+  const arr = loadHistory().filter((x) => x.q !== q);
+  arr.unshift({ q, t: Date.now() });
+  saveHistory(arr);
+  renderHistory();
+}
+function renderHistory() {
+  const arr = loadHistory();
+  historyEl.innerHTML = '';
+  arr.forEach((x) => {
+    const b = document.createElement('button');
+    b.className = 'hist-item';
+    b.title = x.q;
+    b.innerHTML = `<span class="ht-type">Research</span>${escapeHtml(x.q)}`;
+    b.addEventListener('click', () => { closeNav(); send(x.q); });
+    historyEl.appendChild(b);
+  });
+}
+renderHistory();
+
+// ── Sidebar: nav items + research toolkit ────────────────────────
+const TOOL_HINTS = {
+  concept: 'Describe the legal concept or situation in plain English…',
+  keyword: 'Enter keywords to search case law…',
+  case: 'Enter a case name, e.g. Miranda v. Arizona',
+  citation: 'Enter a citation, e.g. 384 U.S. 436',
+};
+document.querySelectorAll('.nav-item').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    const tool = b.dataset.tool;
+    if (tool && TOOL_HINTS[tool]) input.placeholder = TOOL_HINTS[tool];
+    input.focus();
+    closeNav();
+  });
+});

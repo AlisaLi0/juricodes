@@ -12,40 +12,77 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">⚖︎</span>
-      <span class="name">leagle</span>
-    </div>
-    <div class="tagline">Search real US case law in plain English</div>
-  </header>
-
-  <main id="chat" class="chat">
-    <div class="intro">
-      <h1>Ask a legal question. Get the real cases.</h1>
-      <p>
-        Describe your situation in plain English. leagle finds the actual US court
-        opinions and statutes behind it — with citations and links you can open and
-        read yourself.
-      </p>
-      <p class="disclaimer">
-        leagle is a <strong>research tool</strong>: it returns real primary sources,
-        it does <strong>not</strong> give legal advice or predict outcomes. Always
-        verify, and consult a licensed attorney for advice.
-      </p>
-      <div class="examples">
-        <button class="ex">Can my landlord keep my security deposit for normal wear and tear?</button>
-        <button class="ex">What did Miranda v. Arizona actually hold?</button>
-        <button class="ex">Fourth Amendment limits on warrantless car searches</button>
+  <div class="app">
+    <!-- ── Sidebar ─────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="side-brand">
+        <span class="logo">⚖</span><span class="name">leagle<span class="brand-dot">.</span></span>
       </div>
-    </div>
-  </main>
 
-  <form id="composer" class="composer" autocomplete="off">
-    <textarea id="input" rows="1" placeholder="Ask in plain English…  (e.g. wrongful termination after reporting safety violations)"></textarea>
-    <button id="send" type="submit" aria-label="Send">➤</button>
-  </form>
-  <div class="foot">Sources: CourtListener / Free Law Project (public domain). Not legal advice.</div>
+      <nav class="side-nav">
+        <div class="nav-group">
+          <div class="nav-group-title">Legal Reasoning Engine</div>
+          <button class="nav-item active" data-action="new">
+            <span class="nav-ico">✦</span><span>leagle Research</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-title">Legal Research Toolkit</div>
+          <button class="nav-item" data-tool="concept"><span class="nav-ico">◎</span><span>Search by Concept</span></button>
+          <button class="nav-item" data-tool="keyword"><span class="nav-ico">⌕</span><span>Search by Keyword</span></button>
+          <button class="nav-item" data-tool="case"><span class="nav-ico">§</span><span>Search by Case Name</span></button>
+          <button class="nav-item" data-tool="citation"><span class="nav-ico">❝</span><span>Search by Citation</span></button>
+        </div>
+
+        <div class="nav-group history-group">
+          <div class="nav-group-title">Research History</div>
+          <div class="history" id="history"></div>
+        </div>
+      </nav>
+
+      <div class="side-foot">
+        <a href="https://www.courtlistener.com/" target="_blank" rel="noopener">Sources · Free Law Project</a>
+        <span class="muted">Research tool — not legal advice</span>
+      </div>
+    </aside>
+
+    <!-- ── Main ────────────────────────────────────────────────── -->
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="hamburger" aria-label="Menu">☰</button>
+        <div class="topbar-title">Legal Research</div>
+        <div class="topbar-tag">Real US case law · plain English</div>
+      </header>
+
+      <main id="chat" class="chat">
+        <div class="intro">
+          <h1>Ask a legal question. Get the real cases.</h1>
+          <p>
+            Describe your situation in plain English. leagle finds the actual US court
+            opinions and statutes behind it — with citations and links you can open and
+            read yourself.
+          </p>
+          <p class="disclaimer">
+            leagle is a <strong>research tool</strong>: it returns real primary sources,
+            it does <strong>not</strong> give legal advice or predict outcomes. Always
+            verify, and consult a licensed attorney for advice.
+          </p>
+          <div class="examples">
+            <button class="ex">Can my landlord keep my security deposit for normal wear and tear?</button>
+            <button class="ex">What did Miranda v. Arizona actually hold?</button>
+            <button class="ex">Fourth Amendment limits on warrantless car searches</button>
+          </div>
+        </div>
+      </main>
+
+      <form id="composer" class="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Ask in plain English…  (e.g. wrongful termination after reporting safety violations)"></textarea>
+        <button id="send" type="submit" aria-label="Send">➤</button>
+      </form>
+      <div class="foot">Sources: CourtListener / Free Law Project (public domain). Not legal advice.</div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
