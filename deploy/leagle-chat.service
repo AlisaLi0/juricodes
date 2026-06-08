@@ -1,0 +1,14 @@
+[Unit]
+Description=leagle-chat backend (US case law conversational retrieval)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/leagle-chat
+EnvironmentFile=/opt/leagle-chat/leagle.env
+ExecStart=/opt/leagle-chat/venv/bin/python -m uvicorn server.app:app --host 127.0.0.1 --port 8600 --no-access-log
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
