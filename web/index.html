@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>leagle — search real US case law in plain English</title>
   <meta name="description" content="Ask a legal question in plain English and get the real US court opinions behind it — with citations and links. Search, not advice." />
-  <!-- When hosting the frontend separately from the backend (e.g. GitHub Pages),
-       set the backend URL here. Leave blank for same-origin (FastAPI serves web/). -->
-  <meta name="leagle-api-base" content="" />
+  <!-- Backend API base. Set to the absolute backend URL so BOTH access paths work:
+       (1) backend-served at https://agent-tools.cloud/leagle/ (same-origin), and
+       (2) GitHub Pages frontend calling cross-origin (allowed via CORS). -->
+  <meta name="leagle-api-base" content="https://agent-tools.cloud/leagle" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
