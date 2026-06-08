@@ -37,7 +37,7 @@ function renderWithCites(text, turnId) {
 function scrollDown() { chat.scrollTop = chat.scrollHeight; }
 
 // The visible research workflow (mirrors the backend SSE phases).
-const STEPS = [['analyze', 'Analyze'], ['search', 'Search'], ['authorities', 'Authorities'], ['answer', 'Answer']];
+const STEPS = [['analyze', 'Analyze'], ['search', 'Search'], ['authorities', 'Authorities'], ['answer', 'Reasoning']];
 
 function buildStepper() {
   return STEPS.map(([k, lbl], i) =>

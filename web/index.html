@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>leagle — search real US case law in plain English</title>
-  <meta name="description" content="Ask a legal question in plain English and get the real US court opinions behind it — with citations and links. Search, not advice." />
+  <title>leagle — find the law, reason through it, verify every step</title>
+  <meta name="description" content="Ask a legal question in plain English. leagleLM reasons through it grounded in real US court opinions — with the authorities, citations, and links you can verify yourself." />
   <!-- Backend API base. Set to the absolute backend URL so BOTH access paths work:
        (1) backend-served at https://agent-tools.cloud/leagle/ (same-origin), and
        (2) GitHub Pages frontend calling cross-origin (allowed via CORS). -->
@@ -23,7 +23,7 @@
         <div class="nav-group">
           <div class="nav-group-title">Legal Reasoning Engine</div>
           <button class="nav-item active" data-action="new">
-            <span class="nav-ico">✦</span><span>leagle Research</span>
+            <span class="nav-ico">✦</span><span>leagleLM</span>
           </button>
         </div>
 
@@ -52,21 +52,21 @@
       <header class="topbar">
         <button class="hamburger" id="hamburger" aria-label="Menu">☰</button>
         <div class="topbar-title">Legal Research</div>
-        <div class="topbar-tag">Real US case law · plain English</div>
+        <div class="topbar-tag">Find the law · reason through it · verify every step</div>
       </header>
 
       <main id="chat" class="chat">
         <div class="intro">
-          <h1>Ask a legal question. Get the real cases.</h1>
+          <h1>Find the law. Reason through it. Verify every step.</h1>
           <p>
-            Describe your situation in plain English. leagle finds the actual US court
-            opinions and statutes behind it — with citations and links you can open and
-            read yourself.
+            Ask a legal question in plain English. leagleLM works through it grounded in
+            real US court opinions — showing the authorities it relied on, the rule they
+            establish, and citations and links you can open and verify yourself.
           </p>
           <p class="disclaimer">
-            leagle is a <strong>research tool</strong>: it returns real primary sources,
-            it does <strong>not</strong> give legal advice or predict outcomes. Always
-            verify, and consult a licensed attorney for advice.
+            leagleLM reasons from <strong>real primary sources</strong> you can open and
+            verify. It is a <strong>research tool</strong> — verify the authorities before
+            you rely on the analysis, and consult a licensed attorney for an actual decision.
           </p>
           <div class="examples">
             <button class="ex">Can my landlord keep my security deposit for normal wear and tear?</button>
