@@ -28,6 +28,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from .courtlistener import CourtListener
 from . import llm
@@ -35,9 +36,19 @@ from . import llm
 HOST = os.getenv("LEAGLE_HOST", "127.0.0.1")
 PORT = int(os.getenv("LEAGLE_PORT", "8600"))
 WEB_DIR = os.getenv("LEAGLE_WEB_DIR", os.path.join(os.path.dirname(__file__), "..", "web"))
+# Comma-separated allowed origins for the browser front-end (e.g. GitHub Pages).
+# "*" allows any origin (fine here: the API is public, read-only, no cookies).
+CORS_ORIGINS = os.getenv("LEAGLE_CORS_ORIGINS", "*")
 
 cl = CourtListener(api_token=os.getenv("COURTLISTENER_API_TOKEN"))
 app = FastAPI(title="leagle-chat")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in CORS_ORIGINS.split(",") if o.strip()],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 _ROUTE_SYSTEM = (
     "You are the search front-end of a US legal RESEARCH tool. You do NOT give "

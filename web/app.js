@@ -1,6 +1,18 @@
 // leagle-chat frontend — conversational retrieval UI over real US case law.
 'use strict';
 
+// Backend API base. When served by the FastAPI backend itself, leave empty
+// (same-origin). When hosted statically (e.g. GitHub Pages), set this to our
+// backend URL. Resolution order:
+//   1. window.LEAGLE_API_BASE (set inline in index.html)
+//   2. <meta name="leagle-api-base" content="https://...">
+//   3. "" (same origin)
+const API_BASE = (
+  (typeof window !== 'undefined' && window.LEAGLE_API_BASE) ||
+  document.querySelector('meta[name="leagle-api-base"]')?.content ||
+  ''
+).replace(/\/$/, '');
+
 const chat = document.getElementById('chat');
 const form = document.getElementById('composer');
 const input = document.getElementById('input');
@@ -95,7 +107,7 @@ async function send(text) {
   let clarified = '';
 
   try {
-    const resp = await fetch('/api/chat', {
+    const resp = await fetch(API_BASE + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages }),

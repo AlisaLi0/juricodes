@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>leagle — search real US case law in plain English</title>
   <meta name="description" content="Ask a legal question in plain English and get the real US court opinions behind it — with citations and links. Search, not advice." />
-  <link rel="stylesheet" href="/style.css" />
+  <!-- When hosting the frontend separately from the backend (e.g. GitHub Pages),
+       set the backend URL here. Leave blank for same-origin (FastAPI serves web/). -->
+  <meta name="leagle-api-base" content="" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
@@ -43,6 +46,6 @@
   </form>
   <div class="foot">Sources: CourtListener / Free Law Project (public domain). Not legal advice.</div>
 
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
