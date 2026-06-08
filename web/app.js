@@ -81,7 +81,7 @@ function newBotTurn() {
       <div class="cases"></div>
     </div>
     <div class="statutes" style="display:none">
-      <div class="auth-head">Federal Regulations (CFR) <span class="cnt"></span></div>
+      <div class="auth-head">Federal Statutes &amp; Regulations <span class="cnt"></span></div>
       <div class="statlist"></div>
     </div>
     <div class="answer" style="display:none"></div>`;

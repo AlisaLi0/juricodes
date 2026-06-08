@@ -20,6 +20,7 @@ model being up.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
@@ -31,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .courtlistener import CourtListener
-from .statutes import ECFR
+from .statutes import ECFR, USCode
 from . import llm
 
 HOST = os.getenv("LEAGLE_HOST", "127.0.0.1")
@@ -43,6 +44,7 @@ CORS_ORIGINS = os.getenv("LEAGLE_CORS_ORIGINS", "*")
 
 cl = CourtListener(api_token=os.getenv("COURTLISTENER_API_TOKEN"))
 ecfr = ECFR()
+uscode = USCode(os.getenv("GOVINFO_API_KEY", ""))
 app = FastAPI(title="leagle-chat")
 
 app.add_middleware(
@@ -286,16 +288,27 @@ async def chat(request: Request):
                              "count": len(cases),
                              "cases": [c.to_dict() for c in cases]})
 
-        # Federal regulations (CFR), when the router judged the question to be
-        # plausibly governed by a federal rule. Best-effort, parallel-friendly.
+        # Federal statutes (US Code) + regulations (CFR), when the router judged
+        # the question to be plausibly governed by federal law. Queried in
+        # parallel; best-effort, never fatal. US Code (the enacted law) is listed
+        # before CFR (the implementing rules).
         statutes: list = []
         statute_query = (plan.get("statute_query") or "").strip()
         if statute_query:
-            yield _sse("status", {"message": f"Searching federal regulations for: {statute_query}"})
+            yield _sse("status", {"message": f"Searching federal statutes & regulations for: {statute_query}"})
             try:
-                statutes = await ecfr.search(statute_query, max_results=5)
+                code_hits, cfr_hits = await asyncio.gather(
+                    uscode.search(statute_query, max_results=4),
+                    ecfr.search(statute_query, max_results=4),
+                    return_exceptions=True,
+                )
             except Exception:
-                statutes = []
+                code_hits, cfr_hits = [], []
+            statutes = []
+            if isinstance(code_hits, list):
+                statutes += code_hits
+            if isinstance(cfr_hits, list):
+                statutes += cfr_hits
             if statutes:
                 yield _sse("statutes", {"query": statute_query,
                                         "count": len(statutes),
