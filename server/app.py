@@ -134,7 +134,7 @@ class _ChatRateLimit:
 app.add_middleware(_ChatRateLimit, max_per_hour=CHAT_MAX_PER_HOUR)
 
 _ROUTE_SYSTEM = (
-    "You are the front-end of leagleLM, a US legal RESEARCH engine grounded in real "
+    "You are the front-end of JuriCodex, a US legal RESEARCH engine grounded in real "
     "case law AND federal regulations. Your job is to turn the user's plain-English "
     "message into a precise case-law search, OR — when key details are missing — ask "
     "ONE short clarifying question before researching.\n"
@@ -154,7 +154,7 @@ _ROUTE_SYSTEM = (
 )
 
 _ORGANIZE_SYSTEM = (
-    "You are leagleLM, a US legal RESEARCH assistant. You are given a user question "
+    "You are JuriCodex, a US legal RESEARCH assistant. You are given a user question "
     "and a numbered list of REAL court opinions retrieved from CourtListener. Reason "
     "through the question grounded in those authorities. Rules:\n"
     "1. Ground every legal statement ONLY in the provided cases. Never mention a case "

@@ -1,8 +1,11 @@
-# leagle-chat
+# JuriCodex
 
 Conversational retrieval over **real US case law**. Ask a legal question in plain
-English; leagle finds the actual court opinions behind it — with citations and
+English; JuriCodex finds the actual court opinions behind it — with citations and
 links you can open and read yourself.
+
+> Repo/service id: `leagle-chat` (kept as the internal name; the product brand is
+> **JuriCodex**).
 
 It is the **web chat front-end** of the legal-research engine (paired with the
 `legal-mcp` connector that serves the same retrieval to Claude/agents).
@@ -63,7 +66,8 @@ the conversational query-refinement + organizing layer.
 
 ## Roadmap
 
-- More sources (eCFR statutes/regs, CAP historical) fused into one search
-- Quote verification + treatment ("is this still good law?") checks
+- More sources (eCFR statutes/regs, CAP historical) fused into one search ✓
+- Quote verification + treatment ("is this still good law?") checks ✓
+- Accounts (GitHub/Google OAuth) + saved research sessions ✓
 - GPU semantic retrieval (embeddings) on top of keyword search
-- Accounts + freemium billing
+- Freemium billing on top of accounts
