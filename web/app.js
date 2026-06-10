@@ -137,7 +137,7 @@ function newBotTurn() {
       <div class="statlist"></div>
     </div>
     <div class="answer" style="display:none"></div>
-    <div class="answer-actions" style="display:none"><button type="button" class="copy-btn">⧉ Copy</button></div>`;
+    <div class="answer-actions" style="display:none"><button type="button" class="copy-btn">⧉ Copy</button><button type="button" class="export-btn">↓ Export</button></div>`;
   chat.appendChild(el);
   setStep(el, 'analyze', 'active');
   scrollDown();
@@ -183,7 +183,15 @@ function renderCases(casesEl, turnId, cases) {
       ${cyt ? `<div class="treatment">${cyt}</div>` : ''}
       ${cites ? `<div class="cites">${escapeHtml(cites)}</div>` : ''}
       ${c.snippet ? `<div class="snip">${escapeHtml(c.snippet.slice(0, 280))}…</div>` : ''}
-      ${c.url ? `<a class="open" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">Open full opinion ↗</a>` : ''}`;
+      ${c.url ? `<a class="open" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">Open full opinion ↗</a>` : ''}
+      ${c.id ? `<div class="verify" data-cluster="${escapeHtml(String(c.id))}">
+        <button type="button" class="verify-toggle">✓ Verify a quote</button>
+        <div class="verify-box" style="display:none">
+          <textarea class="verify-q" rows="2" placeholder="Paste a quote attributed to this case…"></textarea>
+          <button type="button" class="verify-run">Check</button>
+          <div class="verify-result"></div>
+        </div>
+      </div>` : ''}`;
     casesEl.appendChild(card);
   });
 }
@@ -227,6 +235,86 @@ chat.addEventListener('click', (e) => {
     btn.classList.add('copied'); btn.textContent = '✓ Copied';
     setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '⧉ Copy'; }, 1500);
   }).catch(() => {});
+});
+
+// Export a turn (answer + table of authorities) as a Word-openable .doc file.
+chat.addEventListener('click', (e) => {
+  const btn = e.target.closest('.export-btn');
+  if (!btn) return;
+  const turn = btn.closest('.turn');
+  if (!turn) return;
+  const answerHtml = turn.querySelector('.answer')?.innerHTML || '';
+  // Collect the cited authorities into a clean list.
+  const auth = [...turn.querySelectorAll('.case')].map((c) => {
+    const title = c.querySelector('.title')?.textContent?.trim() || '';
+    const meta = c.querySelector('.meta')?.textContent?.trim() || '';
+    const cites = c.querySelector('.cites')?.textContent?.trim() || '';
+    const url = c.querySelector('.open')?.getAttribute('href') || '';
+    return `<li><strong>${escapeHtml(title)}</strong><br/>${escapeHtml(meta)}` +
+           (cites ? `<br/><em>${escapeHtml(cites)}</em>` : '') +
+           (url ? `<br/><a href="${escapeHtml(url)}">${escapeHtml(url)}</a>` : '') + `</li>`;
+  }).join('');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const doc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" `
+    + `xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">`
+    + `<head><meta charset="utf-8"><title>JuriCodex Research</title></head><body>`
+    + `<h1 style="font-family:Georgia,serif">JuriCodex — Research Memo</h1>`
+    + `<p style="color:#666;font-size:12px">Generated ${stamp} · juricodex.online · Research tool, not legal advice.</p>`
+    + `<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6">${answerHtml}</div>`
+    + (auth ? `<h2 style="font-family:Georgia,serif">Table of Authorities</h2><ol style="font-family:Georgia,serif;font-size:13px">${auth}</ol>` : '')
+    + `<hr/><p style="color:#888;font-size:11px">Verify every authority before relying on it. JuriCodex is a research tool and does not provide legal advice.</p>`
+    + `</body></html>`;
+  const blob = new Blob(['\ufeff', doc], { type: 'application/msword' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `juricodex-research-${stamp}.doc`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  btn.textContent = '✓ Exported';
+  setTimeout(() => { btn.textContent = '↓ Export'; }, 1500);
+});
+
+// Quote verification: confirm a quote really appears in a case's opinion text.
+chat.addEventListener('click', async (e) => {
+  const toggle = e.target.closest('.verify-toggle');
+  if (toggle) {
+    const box = toggle.parentElement.querySelector('.verify-box');
+    if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+    return;
+  }
+  const run = e.target.closest('.verify-run');
+  if (!run) return;
+  const wrap = run.closest('.verify');
+  const clusterId = wrap?.dataset.cluster || '';
+  const quote = wrap?.querySelector('.verify-q')?.value.trim() || '';
+  const out = wrap?.querySelector('.verify-result');
+  if (!out) return;
+  if (quote.length < 6) { out.className = 'verify-result vr-miss'; out.textContent = 'Enter a longer quote to check.'; return; }
+  run.disabled = true; out.className = 'verify-result'; out.textContent = 'Checking the real opinion text…';
+  try {
+    const resp = await api('/api/verify-quote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cluster_id: clusterId, quote }),
+    });
+    if (resp.status === 401) { me = null; renderAccount(); openLoginModal(); out.textContent = ''; return; }
+    const r = await resp.json();
+    if (r.found) {
+      out.className = 'verify-result vr-ok';
+      out.innerHTML = `<strong>✓ Found in the opinion</strong> (${r.match} match).` +
+        (r.context ? `<div class="vr-ctx">…${escapeHtml(r.context)}…</div>` : '');
+    } else if (r.match === 'no_text') {
+      out.className = 'verify-result vr-warn';
+      out.textContent = '⚠ The full opinion text isn\'t available to check this quote.';
+    } else {
+      out.className = 'verify-result vr-miss';
+      out.textContent = '✗ Not found in this opinion\'s text — treat the quote as unverified.';
+    }
+  } catch {
+    out.className = 'verify-result vr-warn';
+    out.textContent = 'Verification failed — please try again.';
+  } finally {
+    run.disabled = false;
+  }
 });
 
 async function send(text) {

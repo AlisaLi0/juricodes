@@ -445,6 +445,25 @@ def health() -> dict:
     return {"status": "ok", "llm": llm.LLM_BASE_URL, "model": llm.LLM_MODEL}
 
 
+@app.post("/api/verify-quote")
+async def verify_quote(request: Request):
+    """Anti-hallucination check: confirm a quote really appears in a case's
+    opinion text. Signed-in only; does not count against the chat quota (it is
+    a cheap single fetch, and we want users to verify freely)."""
+    if not _current_user(request):
+        return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    body = await request.json()
+    cluster_id = str(body.get("cluster_id") or "").strip()
+    quote = str(body.get("quote") or "").strip()
+    if not cluster_id or not quote:
+        return JSONResponse(status_code=400, content={"error": "cluster_id and quote required"})
+    try:
+        result = await cl.verify_quote(cluster_id, quote)
+    except httpx.HTTPError as exc:
+        return JSONResponse(status_code=502, content={"error": f"verify failed: {exc}"})
+    return result
+
+
 # Extension-less aliases for the legal pages (referenced by Google's OAuth
 # consent screen and Freemius checkout as /terms and /privacy).
 @app.get("/terms")

@@ -272,6 +272,39 @@ html, body {
 
 .foot { text-align: center; color: var(--muted); font-size: 11.5px; padding: 6px 0 12px; }
 
+/* ── Quote verification (per case) + Export ───────────────────── */
+.answer-actions { display: flex; gap: 8px; }
+.export-btn {
+  background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+  padding: 5px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.export-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+.verify { margin-top: 9px; }
+.verify-toggle {
+  background: none; border: none; color: var(--accent-2); cursor: pointer;
+  font-size: 12.5px; font-weight: 600; padding: 0;
+}
+.verify-toggle:hover { text-decoration: underline; }
+.verify-box { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.verify-q {
+  width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 9px; font: inherit; font-size: 13px; background: var(--panel); color: var(--ink);
+}
+.verify-run {
+  align-self: flex-start; background: var(--accent); border: 1px solid var(--accent);
+  color: #fff; padding: 5px 13px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.verify-run:hover { background: var(--accent-2); }
+.verify-run:disabled { opacity: .6; cursor: default; }
+.verify-result { font-size: 12.5px; line-height: 1.5; }
+.verify-result.vr-ok { color: var(--good); }
+.verify-result.vr-miss { color: #c0392b; }
+.verify-result.vr-warn { color: var(--warn); }
+.vr-ctx {
+  margin-top: 5px; padding: 7px 9px; background: var(--good-soft); border-radius: 7px;
+  color: var(--ink); font-size: 12.5px; font-style: italic;
+}
+
 /* ── Account block (sidebar) ──────────────────────────────────── */
 .side-account { padding: 8px 12px; border-top: 1px solid var(--line); }
 .side-account:empty { display: none; }
