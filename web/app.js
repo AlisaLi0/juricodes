@@ -265,6 +265,16 @@ async function send(text) {
       openLoginModal(text);
       return;
     }
+    // Monthly quota used up: show the upgrade dialog instead of an error.
+    if (resp.status === 402) {
+      let info = {};
+      try { info = await resp.json(); } catch { /* ignore */ }
+      t.el.remove();
+      messages.pop();
+      busy = false; sendBtn.disabled = false;
+      openUpgradeModal(info);
+      return;
+    }
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
 
     const reader = resp.body.getReader();
@@ -410,6 +420,8 @@ let providers = [];            // configured OAuth providers, e.g. ['github']
 let currentSessionId = null;   // backend id of the active thread (when signed in)
 let authReady = false;         // true once /api/auth/me has resolved
 let authPromise = null;        // the in-flight initial auth load
+let billingCfg = null;         // { product_id, public_key, plans } or null
+let planInfo = null;           // { plan, limit, used, remaining } for current user
 
 function api(path, opts = {}) {
   return fetch(API_BASE + path, { credentials: 'include', ...opts });
@@ -424,16 +436,24 @@ function renderAccount() {
     const avatar = me.avatar_url
       ? `<img class="acc-avatar" src="${escapeHtml(me.avatar_url)}" alt="" />`
       : `<span class="acc-avatar acc-initial">${escapeHtml(initial)}</span>`;
+    const planName = (me.plan || 'free');
+    const usage = planInfo
+      ? `${planInfo.used}/${planInfo.limit >= 100000 ? '∞' : planInfo.limit} this month`
+      : `${escapeHtml(planName)} plan`;
+    const upgrade = (billingCfg && planName === 'free')
+      ? `<button class="acc-upgrade" id="upgradeBtn">Upgrade</button>` : '';
     accountEl.innerHTML = `
       <div class="acc-user">
         ${avatar}
         <div class="acc-meta">
           <div class="acc-name">${escapeHtml(me.name || me.email || 'Signed in')}</div>
-          <div class="acc-plan">${escapeHtml(me.plan || 'free')} plan</div>
+          <div class="acc-plan">${escapeHtml(planName)} · ${usage}</div>
         </div>
-        <button class="acc-logout" id="logoutBtn" title="Sign out">⎋</button>
-      </div>`;
+        <button class="acc-logout" id="logoutBtn" title="Sign out">⏋</button>
+      </div>
+      ${upgrade}`;
     document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('upgradeBtn')?.addEventListener('click', () => openUpgradeModal());
   } else if (providers.length) {
     const btns = providers.map((p) =>
       `<button class="acc-signin" data-provider="${p}">
@@ -491,14 +511,92 @@ document.getElementById('loginClose')?.addEventListener('click', closeLoginModal
 loginModal?.addEventListener('click', (e) => { if (e.target === loginModal) closeLoginModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLoginModal(); });
 
+// ── Upgrade / pricing modal + Freemius checkout ─────────────────────────────
+const upgradeModal = document.getElementById('upgradeModal');
+let fsLoading = null;
+
+function loadFreemius() {
+  if (window.FS && window.FS.Checkout) return Promise.resolve();
+  if (fsLoading) return fsLoading;
+  fsLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://checkout.freemius.com/checkout.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return fsLoading;
+}
+
+const PLAN_BLURB = {
+  pro: { name: 'Pro', price: '$9.98/mo', pitch: '300 research questions a month + quote verification.' },
+  max: { name: 'Max', price: '$29.98/mo', pitch: 'Unlimited research for power users.' },
+};
+
+function openUpgradeModal(quota) {
+  if (!upgradeModal) return;
+  if (!billingCfg) {        // billing not configured — nothing to sell yet
+    return;
+  }
+  const sub = quota && quota.limit
+    ? `<p class="up-quota">You've used all ${quota.limit} questions on the Free plan this month.</p>`
+    : '';
+  const cards = Object.entries(billingCfg.plans || {}).map(([ourPlan, planId]) => {
+    const b = PLAN_BLURB[ourPlan] || { name: ourPlan, price: '', pitch: '' };
+    return `<button class="up-plan" data-plan-id="${planId}">
+        <span class="up-plan-name">${b.name}</span>
+        <span class="up-plan-price">${b.price}</span>
+        <span class="up-plan-pitch">${b.pitch}</span>
+      </button>`;
+  }).join('');
+  upgradeModal.querySelector('.up-body').innerHTML = sub + cards;
+  upgradeModal.querySelectorAll('.up-plan').forEach((b) =>
+    b.addEventListener('click', () => startCheckout(b.dataset.planId)));
+  upgradeModal.classList.add('open');
+  upgradeModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeUpgradeModal() {
+  if (!upgradeModal) return;
+  upgradeModal.classList.remove('open');
+  upgradeModal.setAttribute('aria-hidden', 'true');
+}
+
+async function startCheckout(planId) {
+  if (!billingCfg) return;
+  try { await loadFreemius(); } catch { return; }
+  const handler = new window.FS.Checkout({
+    product_id: billingCfg.product_id,
+    public_key: billingCfg.public_key,
+  });
+  handler.open({
+    plan_id: planId,
+    name: 'JuriCodex',
+    user_email: (me && me.email) || undefined,
+    purchaseCompleted: () => {
+      // Freemius confirms purchase; the webhook flips our DB. Re-pull our state.
+      setTimeout(() => loadAuth(), 1500);
+    },
+    success: () => { closeUpgradeModal(); },
+  });
+}
+
+document.getElementById('upgradeClose')?.addEventListener('click', closeUpgradeModal);
+upgradeModal?.addEventListener('click', (e) => { if (e.target === upgradeModal) closeUpgradeModal(); });
+
 async function loadAuth() {
   try {
-    const [meResp, provResp] = await Promise.all([
+    const [meResp, provResp, cfgResp] = await Promise.all([
       api('/api/auth/me'),
       api('/api/auth/providers'),
+      api('/api/config'),
     ]);
     me = meResp.ok ? await meResp.json() : null;
     providers = provResp.ok ? (await provResp.json()).providers || [] : [];
+    if (cfgResp.ok) {
+      const cfg = await cfgResp.json();
+      billingCfg = cfg.billing ? cfg.freemius : null;
+      planInfo = cfg.me || null;
+    }
   } catch {
     me = null; providers = [];
   }

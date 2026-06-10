@@ -9,7 +9,7 @@
        serves this frontend and the /api/* routes from the same host, so all
        requests, cookies and the OAuth callback stay first-party. -->
   <meta name="leagle-api-base" content="" />
-  <link rel="stylesheet" href="style.css?v=20260610b" />
+  <link rel="stylesheet" href="style.css?v=20260610c" />
 </head>
 <body>
   <div class="app">
@@ -98,6 +98,18 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260610b"></script>
+  <!-- Upgrade / pricing dialog: shown on the Upgrade button or a quota 402. -->
+  <div class="login-overlay" id="upgradeModal" aria-hidden="true">
+    <div class="login-card up-card" role="dialog" aria-modal="true" aria-label="Upgrade JuriCodex">
+      <button class="login-close" id="upgradeClose" aria-label="Close">✕</button>
+      <div class="login-logo">⚖</div>
+      <h2 class="login-title">Upgrade JuriCodex</h2>
+      <p class="login-sub">More research questions and the quote-verification tools, grounded in real law.</p>
+      <div class="up-body"><!-- plan cards injected by app.js --></div>
+      <p class="login-fine">Secure checkout by Freemius · Cancel anytime.</p>
+    </div>
+  </div>
+
+  <script src="app.js?v=20260610c"></script>
 </body>
 </html>

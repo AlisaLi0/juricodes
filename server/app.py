@@ -36,7 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .courtlistener import CourtListener
 from .statutes import ECFR, USCode
 from . import llm
-from . import db, auth
+from . import db, auth, billing
 
 HOST = os.getenv("LEAGLE_HOST", "127.0.0.1")
 PORT = int(os.getenv("LEAGLE_PORT", "8600"))
@@ -274,8 +274,22 @@ async def chat(request: Request):
     # Asking requires an account: the research flow fans out to the LLM and
     # several upstream APIs, so it is gated behind sign-in (the frontend shows a
     # login modal on 401). Verified from the signed session cookie, not a header.
-    if not _current_user(request):
+    user = _current_user(request)
+    if not user:
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    # Monthly question quota per plan. Count the ask up-front (atomic); refund it
+    # if the request fails before producing anything. Over the limit -> 402 so
+    # the frontend can show the upgrade prompt.
+    plan = db.PLANS.get(user.plan, db.PLANS[db.DEFAULT_PLAN])
+    limit = int(plan["monthly_questions"])
+    if not db.try_consume_question(user.id, limit):
+        return JSONResponse(status_code=402, content={
+            "error": "quota_exceeded",
+            "plan": user.plan,
+            "limit": limit,
+            "message": f"You've used all {limit} research questions on the "
+                       f"{plan['label']} plan this month. Upgrade for more.",
+        })
     body = await request.json()
     messages = body.get("messages") or []
     messages = [
@@ -284,6 +298,7 @@ async def chat(request: Request):
         if m.get("content")
     ]
     if not messages:
+        db.refund_question(user.id)
         return JSONResponse(status_code=400, content={"error": "no messages"})
     question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     # Toolkit mode: one of concept|keyword|case|citation runs a direct, precise
@@ -426,6 +441,43 @@ async def chat(request: Request):
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "llm": llm.LLM_BASE_URL, "model": llm.LLM_MODEL}
+
+
+# ── Billing (Freemius): public config, quota, and the signed webhook ────────
+
+@app.get("/api/config")
+def config(request: Request) -> dict:
+    """Feature flags + public checkout params for the frontend, plus the
+    signed-in user's plan/quota when available."""
+    out: dict = {"billing": billing.enabled(), "freemius": billing.public_config(),
+                 "plans": db.PLANS}
+    user = _current_user(request)
+    if user:
+        plan = db.PLANS.get(user.plan, db.PLANS[db.DEFAULT_PLAN])
+        used = db.usage_this_month(user.id)
+        out["me"] = {
+            "plan": user.plan,
+            "limit": int(plan["monthly_questions"]),
+            "used": used,
+            "remaining": max(0, int(plan["monthly_questions"]) - used),
+        }
+    return out
+
+
+@app.post("/api/billing/freemius/webhook")
+async def freemius_webhook(request: Request):
+    if not billing.enabled():
+        return JSONResponse(status_code=503, content={"error": "billing_not_configured"})
+    raw = await request.body()
+    sig = request.headers.get("x-signature", "") or request.headers.get("authorization", "")
+    if not billing.verify_signature(raw, sig):
+        return JSONResponse(status_code=401, content={"error": "bad_signature"})
+    try:
+        evt = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse(status_code=400, content={"error": "invalid_json"})
+    result = billing.handle_event(evt)
+    return JSONResponse(status_code=200, content=result)
 
 
 # ── Authentication (OAuth sign-in + signed-cookie sessions) ─────────────────
