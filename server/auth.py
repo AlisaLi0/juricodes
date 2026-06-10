@@ -15,7 +15,7 @@ Flow:
 
 Configuration (env):
   LEAGLE_SECRET_KEY        signing key for the session cookie (REQUIRED in prod)
-  LEAGLE_PUBLIC_BASE       public base URL, e.g. https://agent-tools.cloud/leagle
+  LEAGLE_PUBLIC_BASE       public base URL, e.g. https://juricodex.online
   GITHUB_CLIENT_ID/SECRET  GitHub OAuth app credentials
   GOOGLE_CLIENT_ID/SECRET  Google OAuth app credentials
 Only providers whose credentials are present are offered.
