@@ -238,10 +238,6 @@ async def exchange_code(provider: str, code: str, verifier: str = "") -> db.User
             name = d.get("name") or d.get("username") or ""
             avatar = d.get("profile_image_url") or ""
             email = d.get("confirmed_email") or d.get("email") or ""
-            if not email and puid:
-                # X may withhold email; synthesise a stable account id so the user
-                # can still sign in (billing match needs a real email at checkout).
-                email = f"x_{puid}@users.juricodex.online"
         else:  # google
             puid = str(info.get("sub") or "")
             name = info.get("name") or ""

@@ -723,9 +723,9 @@ const PLAN_BLURB = {
   day_pass: { name: '3-Day Pass', price: '$2.98', pitch: 'Max-level research for 3 days — no subscription.' },
 };
 
-// A placeholder email we mint when a provider (e.g. X) doesn't release a real one.
-function isSyntheticEmail(e) {
-  return /@users\.juricodex\.online$/i.test(String(e || ''));
+function hasBillingEmail() {
+  const e = String((me && me.email) || '').trim();
+  return !!e && !/@users\.juricodex\.online$/i.test(e);
 }
 
 function openUpgradeModal(quota) {
@@ -736,13 +736,10 @@ function openUpgradeModal(quota) {
   const sub = quota && quota.limit
     ? `<p class="up-quota">You've used all ${quota.limit} questions on the Free plan this month.</p>`
     : '';
-  // X sign-ins may not release a real email, so we hold a placeholder address.
-  // Tell those users to keep the pre-filled email at checkout so the purchase
-  // links back to this account automatically.
-  const synthNote = (me && isSyntheticEmail(me.email))
-    ? `<p class="up-quota" style="color:var(--muted)">Tip: at checkout, keep the
-       pre-filled email so your purchase links to this account automatically. If
-       you change it, sign in again afterward with that email to apply it.</p>`
+  const emailNote = !hasBillingEmail()
+    ? `<p class="up-quota" style="color:var(--warn)">Add and verify an email with
+       your sign-in provider before subscribing. We need a real verified email to
+       attach the purchase to your account.</p>`
     : '';
   const cards = Object.entries(billingCfg.plans || {}).map(([ourPlan, planId]) => {
     const b = PLAN_BLURB[ourPlan] || { name: ourPlan, price: '', pitch: '' };
@@ -752,7 +749,7 @@ function openUpgradeModal(quota) {
         <span class="up-plan-pitch">${b.pitch}</span>
       </button>`;
   }).join('');
-  upgradeModal.querySelector('.up-body').innerHTML = sub + synthNote + cards;
+  upgradeModal.querySelector('.up-body').innerHTML = sub + emailNote + cards;
   upgradeModal.querySelectorAll('.up-plan').forEach((b) =>
     b.addEventListener('click', () => startCheckout(b.dataset.planId)));
   upgradeModal.classList.add('open');
@@ -767,6 +764,10 @@ function closeUpgradeModal() {
 
 async function startCheckout(planId) {
   if (!billingCfg) return;
+  if (!hasBillingEmail()) {
+    showToast('Please add and verify an email with your sign-in provider before subscribing.');
+    return;
+  }
   try { await loadFreemius(); } catch { return; }
   const handler = new window.FS.Checkout({
     product_id: billingCfg.product_id,
