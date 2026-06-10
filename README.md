@@ -71,3 +71,9 @@ the conversational query-refinement + organizing layer.
 - Accounts (GitHub/Google OAuth) + saved research sessions ✓
 - GPU semantic retrieval (embeddings) on top of keyword search
 - Freemium billing on top of accounts
+
+## License
+
+[GNU AGPL-3.0](LICENSE). You may use, study, and self-host this code, but if you
+run a modified version as a network service you must make your source available
+to its users under the same license.
