@@ -271,6 +271,11 @@ async def _organize(question: str, cases: list, statutes: list | None = None) ->
 
 @app.post("/api/chat")
 async def chat(request: Request):
+    # Asking requires an account: the research flow fans out to the LLM and
+    # several upstream APIs, so it is gated behind sign-in (the frontend shows a
+    # login modal on 401). Verified from the signed session cookie, not a header.
+    if not _current_user(request):
+        return JSONResponse(status_code=401, content={"error": "not_authenticated"})
     body = await request.json()
     messages = body.get("messages") or []
     messages = [

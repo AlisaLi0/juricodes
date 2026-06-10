@@ -255,6 +255,16 @@ async function send(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, mode: currentMode }),
     });
+    // Session expired (or never signed in): drop back to the sign-in gate and
+    // re-queue this question so it's ready after they authenticate.
+    if (resp.status === 401) {
+      me = null; renderAccount();
+      t.el.remove();
+      messages.pop();
+      busy = false; sendBtn.disabled = false;
+      openLoginModal(text);
+      return;
+    }
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
 
     const reader = resp.body.getReader();
