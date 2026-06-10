@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JuriCodex — find the law, reason through it, verify every step</title>
   <meta name="description" content="Ask a legal question in plain English. JuriCodex reasons through it grounded in real US court opinions — with the authorities, citations, and links you can verify yourself." />
-  <!-- Backend API base. Set to the absolute backend URL so BOTH access paths work:
-       (1) backend-served at https://agent-tools.cloud/leagle/ (same-origin), and
-       (2) GitHub Pages frontend calling cross-origin (allowed via CORS). -->
-  <meta name="leagle-api-base" content="https://agent-tools.cloud/leagle" />
+  <!-- Backend API base. Empty = same-origin: the backend (juricodex.online)
+       serves this frontend and the /api/* routes from the same host, so all
+       requests, cookies and the OAuth callback stay first-party. -->
+  <meta name="leagle-api-base" content="" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
