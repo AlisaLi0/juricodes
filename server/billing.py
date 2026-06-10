@@ -28,9 +28,12 @@ PUBLIC_KEY = os.getenv("FREEMIUS_PUBLIC_KEY", "").strip()
 SECRET_KEY = os.getenv("FREEMIUS_SECRET_KEY", "").strip()
 PORTAL_URL = os.getenv("FREEMIUS_PORTAL_URL", "").strip()
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@juricodex.online").strip()
+SANDBOX = os.getenv("FREEMIUS_SANDBOX", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # our_plan -> Freemius plan_id (used to build a checkout link)
 PLAN_TO_FREEMIUS: dict[str, str] = {}
+# our_plan -> Freemius pricing_id (used to pick the exact paid price/cadence)
+PRICING_TO_FREEMIUS: dict[str, str] = {}
 # Freemius plan_id AND pricing_id -> our_plan (used to read a webhook back)
 FREEMIUS_TO_PLAN: dict[str, str] = {}
 for _triple in os.getenv("FREEMIUS_PLANS", "").split(","):
@@ -40,6 +43,7 @@ for _triple in os.getenv("FREEMIUS_PLANS", "").split(","):
         PLAN_TO_FREEMIUS[_our] = _plan_id
         FREEMIUS_TO_PLAN[_plan_id] = _our
         if len(_p) >= 3:                 # pricing_id also maps back to our plan
+            PRICING_TO_FREEMIUS[_our] = _p[2]
             FREEMIUS_TO_PLAN[_p[2]] = _our
 
 
@@ -55,6 +59,8 @@ def public_config() -> dict | None:
         "product_id": PRODUCT_ID,
         "public_key": PUBLIC_KEY,
         "plans": PLAN_TO_FREEMIUS,
+        "pricing": PRICING_TO_FREEMIUS,
+        "sandbox": SANDBOX,
         "portal_url": PORTAL_URL,
         "support_email": SUPPORT_EMAIL,
     }

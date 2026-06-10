@@ -751,7 +751,8 @@ function openUpgradeModal(quota) {
     : '';
   const cards = Object.entries(billingCfg.plans || {}).map(([ourPlan, planId]) => {
     const b = PLAN_BLURB[ourPlan] || { name: ourPlan, price: '', pitch: '' };
-    return `<button class="up-plan" data-plan-id="${planId}">
+    const pricingId = (billingCfg.pricing || {})[ourPlan] || '';
+    return `<button class="up-plan" data-plan-id="${escapeHtml(planId)}" data-pricing-id="${escapeHtml(pricingId)}">
         <span class="up-plan-name">${b.name}</span>
         <span class="up-plan-price">${b.price}</span>
         <span class="up-plan-pitch">${b.pitch}</span>
@@ -759,7 +760,7 @@ function openUpgradeModal(quota) {
   }).join('');
   upgradeModal.querySelector('.up-body').innerHTML = sub + emailNote + cards;
   upgradeModal.querySelectorAll('.up-plan').forEach((b) =>
-    b.addEventListener('click', () => startCheckout(b.dataset.planId)));
+    b.addEventListener('click', () => startCheckout(b.dataset.planId, b.dataset.pricingId)));
   upgradeModal.classList.add('open');
   upgradeModal.setAttribute('aria-hidden', 'false');
 }
@@ -770,7 +771,7 @@ function closeUpgradeModal() {
   upgradeModal.setAttribute('aria-hidden', 'true');
 }
 
-async function startCheckout(planId) {
+async function startCheckout(planId, pricingId) {
   if (!billingCfg) return;
   if (!hasBillingEmail()) {
     showToast('Please add and verify an email with your sign-in provider before subscribing.');
@@ -781,8 +782,10 @@ async function startCheckout(planId) {
     product_id: billingCfg.product_id,
     public_key: billingCfg.public_key,
   });
-  handler.open({
+  const opts = {
     plan_id: planId,
+    pricing_id: pricingId || undefined,
+    sandbox: !!billingCfg.sandbox,
     name: 'JuriCodex',
     user_email: (me && me.email) || undefined,
     purchaseCompleted: () => {
@@ -790,7 +793,8 @@ async function startCheckout(planId) {
       setTimeout(() => loadAuth(), 1500);
     },
     success: () => { closeUpgradeModal(); },
-  });
+  };
+  handler.open(opts);
 }
 
 function openBillingPortal() {

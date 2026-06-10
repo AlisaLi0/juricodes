@@ -11,11 +11,20 @@ class AccountBillingTests(unittest.TestCase):
         os.environ["FREEMIUS_PRODUCT_ID"] = "31701"
         os.environ["FREEMIUS_SECRET_KEY"] = "test-secret"
         os.environ["FREEMIUS_PLANS"] = "pro:52037:68208,max:52038:68209,day_pass:52039:68210"
+        os.environ["FREEMIUS_SANDBOX"] = "false"
         import server.db as db
         import server.billing as billing
         self.db = importlib.reload(db)
         self.billing = importlib.reload(billing)
         self.db.init_db()
+
+    def test_public_billing_config_exposes_live_pricing_ids(self):
+        cfg = self.billing.public_config()
+        self.assertEqual(cfg["plans"]["pro"], "52037")
+        self.assertEqual(cfg["pricing"]["pro"], "68208")
+        self.assertEqual(cfg["pricing"]["max"], "68209")
+        self.assertEqual(cfg["pricing"]["day_pass"], "68210")
+        self.assertFalse(cfg["sandbox"])
 
     def tearDown(self):
         self.tmp.cleanup()
