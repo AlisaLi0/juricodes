@@ -27,13 +27,16 @@ DB_PATH = os.getenv("LEAGLE_DB_PATH", os.path.join(os.path.dirname(__file__), ".
 
 # Plan -> monthly research-question allowance. "research" = one /api/chat ask.
 # Free is generous enough to prove value but nudges heavy users to upgrade;
-# paid tiers map to the Freemius plans (pro/max).
+# paid tiers map to the Freemius plans (pro/max). day_pass is a one-off purchase
+# that grants Max-level access for a few days (see PASS_DAYS) then lapses to free.
 PLANS: dict[str, dict] = {
-    "free": {"label": "Free",     "monthly_questions": 10,    "price": 0},
-    "pro":  {"label": "Pro",      "monthly_questions": 300,   "price": 9.98},
-    "max":  {"label": "Max",      "monthly_questions": 100000, "price": 29.98},  # "soft" unlimited
+    "free":     {"label": "Free", "monthly_questions": 10,     "price": 0},
+    "pro":      {"label": "Pro",  "monthly_questions": 300,    "price": 9.98},
+    "max":      {"label": "Max",  "monthly_questions": 100000, "price": 29.98},   # "soft" unlimited
+    "day_pass": {"label": "3-Day Pass", "monthly_questions": 100000, "price": 2.98},  # Max-level, time-boxed
 }
 DEFAULT_PLAN = "free"
+PASS_DAYS = 3  # how long a one-off day_pass stays active
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -278,6 +281,29 @@ def set_plan(user_id: int, plan: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def active_day_pass_end(user_id: int) -> int | None:
+    """Return the unix expiry of an unexpired one-off day pass, or None."""
+    conn = _connect()
+    try:
+        r = conn.execute(
+            "SELECT MAX(period_end) AS e FROM subscriptions "
+            "WHERE user_id=? AND plan='day_pass' AND status='active' "
+            "AND period_end IS NOT NULL AND period_end > ?",
+            (user_id, int(time.time())),
+        ).fetchone()
+        return int(r["e"]) if r and r["e"] else None
+    finally:
+        conn.close()
+
+
+def effective_plan(user: "User") -> str:
+    """The plan whose quota applies right now: an active day pass beats the
+    stored subscription plan; otherwise the user's own plan."""
+    if active_day_pass_end(user.id):
+        return "day_pass"
+    return user.plan if user.plan in PLANS else DEFAULT_PLAN
 
 
 def _month() -> str:

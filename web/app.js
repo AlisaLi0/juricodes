@@ -530,6 +530,7 @@ function loadFreemius() {
 const PLAN_BLURB = {
   pro: { name: 'Pro', price: '$9.98/mo', pitch: '300 research questions a month + quote verification.' },
   max: { name: 'Max', price: '$29.98/mo', pitch: 'Unlimited research for power users.' },
+  day_pass: { name: '3-Day Pass', price: '$2.98', pitch: 'Max-level research for 3 days — no subscription.' },
 };
 
 function openUpgradeModal(quota) {

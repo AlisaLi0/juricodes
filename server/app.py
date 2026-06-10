@@ -279,13 +279,15 @@ async def chat(request: Request):
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
     # Monthly question quota per plan. Count the ask up-front (atomic); refund it
     # if the request fails before producing anything. Over the limit -> 402 so
-    # the frontend can show the upgrade prompt.
-    plan = db.PLANS.get(user.plan, db.PLANS[db.DEFAULT_PLAN])
+    # the frontend can show the upgrade prompt. An active one-off day pass raises
+    # the effective plan to Max-level for its duration.
+    eff = db.effective_plan(user)
+    plan = db.PLANS.get(eff, db.PLANS[db.DEFAULT_PLAN])
     limit = int(plan["monthly_questions"])
     if not db.try_consume_question(user.id, limit):
         return JSONResponse(status_code=402, content={
             "error": "quota_exceeded",
-            "plan": user.plan,
+            "plan": eff,
             "limit": limit,
             "message": f"You've used all {limit} research questions on the "
                        f"{plan['label']} plan this month. Upgrade for more.",
@@ -453,13 +455,16 @@ def config(request: Request) -> dict:
                  "plans": db.PLANS}
     user = _current_user(request)
     if user:
-        plan = db.PLANS.get(user.plan, db.PLANS[db.DEFAULT_PLAN])
+        eff = db.effective_plan(user)
+        plan = db.PLANS.get(eff, db.PLANS[db.DEFAULT_PLAN])
         used = db.usage_this_month(user.id)
+        pass_end = db.active_day_pass_end(user.id)
         out["me"] = {
-            "plan": user.plan,
+            "plan": eff,
             "limit": int(plan["monthly_questions"]),
             "used": used,
             "remaining": max(0, int(plan["monthly_questions"]) - used),
+            "day_pass_until": pass_end,
         }
     return out
 

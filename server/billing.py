@@ -140,6 +140,14 @@ def handle_event(evt: dict) -> dict:
         return {"ok": True, "action": "downgrade", "type": etype, "user": user.id}
 
     if etype in ACTIVATE and plan:
+        if plan == "day_pass":
+            # One-off purchase: grant Max-level access for PASS_DAYS without
+            # touching the user's stored plan (it lapses automatically when the
+            # subscription's period_end passes — see db.effective_plan).
+            pass_end = int(time.time()) + db.PASS_DAYS * 86400
+            db.upsert_subscription(user.id, "day_pass", "freemius", ref, "active", pass_end)
+            return {"ok": True, "action": "day_pass", "days": db.PASS_DAYS,
+                    "type": etype, "user": user.id}
         db.set_plan(user.id, plan)
         db.upsert_subscription(user.id, plan, "freemius", ref, "active", period_end)
         return {"ok": True, "action": "activate", "plan": plan, "type": etype, "user": user.id}
