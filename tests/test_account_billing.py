@@ -74,6 +74,20 @@ class AccountBillingTests(unittest.TestCase):
         self.assertIsInstance(period_end, int)
         self.assertGreater(period_end, 0)
 
+    def test_freemius_event_type_strips_whitespace(self):
+        user = self.db.upsert_user("google", "g-1", email="paid2@example.com", name="Paid 2")
+        evt = {
+            "id": "evt-space",
+            "type": " license.activated ",
+            "objects": {
+                "user": {"email": "paid2@example.com"},
+                "license": {"id": "lic-space", "plan_id": "52037"},
+            },
+        }
+        result = self.billing.handle_event(evt)
+        self.assertEqual(result["action"], "activate")
+        self.assertEqual(self.db.get_user(user.id).plan, "pro")
+
 
 if __name__ == "__main__":
     unittest.main()

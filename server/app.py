@@ -50,6 +50,9 @@ CORS_ORIGINS = os.getenv("LEAGLE_CORS_ORIGINS", "*")
 # and the one whose abuse would burn our upstream quotas (govinfo 1000/h, the
 # LLM gateway, CourtListener). 0 disables the limit.
 CHAT_MAX_PER_HOUR = int(os.getenv("LEAGLE_CHAT_MAX_PER_HOUR", "30"))
+MAX_CHAT_MESSAGES = int(os.getenv("LEAGLE_MAX_CHAT_MESSAGES", "20"))
+MAX_CHAT_MESSAGE_CHARS = int(os.getenv("LEAGLE_MAX_CHAT_MESSAGE_CHARS", "50000"))
+MAX_SESSION_PAYLOAD_BYTES = int(os.getenv("LEAGLE_MAX_SESSION_PAYLOAD_BYTES", "2000000"))
 
 cl = CourtListener(api_token=os.getenv("COURTLISTENER_API_TOKEN"))
 ecfr = ECFR()
@@ -866,12 +869,19 @@ async def chat(request: Request):
         body = await request.json()
     except (ValueError, UnicodeDecodeError):
         return JSONResponse(status_code=400, content={"error": "invalid_json"})
-    messages = body.get("messages") or []
-    messages = [
-        {"role": m.get("role", "user"), "content": str(m.get("content", ""))}
-        for m in messages
-        if m.get("content")
-    ]
+    raw_messages = body.get("messages") or []
+    if not isinstance(raw_messages, list) or len(raw_messages) > MAX_CHAT_MESSAGES:
+        return JSONResponse(status_code=400, content={"error": "bad_messages"})
+    messages = []
+    for m in raw_messages:
+        if not isinstance(m, dict) or not m.get("content"):
+            continue
+        content = str(m.get("content", ""))
+        if len(content) > MAX_CHAT_MESSAGE_CHARS:
+            return JSONResponse(status_code=413, content={"error": "message_too_long"})
+        role = str(m.get("role", "user"))
+        messages.append({"role": role if role in {"user", "assistant"} else "user",
+                         "content": content})
     if not messages:
         return JSONResponse(status_code=400, content={"error": "no messages"})
     language = _normalize_language(body.get("language"))
@@ -1246,6 +1256,8 @@ async def verify_quote(request: Request):
     quote = str(body.get("quote") or "").strip()
     if not cluster_id or not quote:
         return JSONResponse(status_code=400, content={"error": "cluster_id and quote required"})
+    if not cluster_id.isdigit():
+        return JSONResponse(status_code=400, content={"error": "invalid_cluster_id"})
     try:
         result = await cl.verify_quote(cluster_id, quote)
     except httpx.HTTPError as exc:
@@ -1262,6 +1274,8 @@ async def case_details(cluster_id: str, request: Request):
     """
     if not _current_user(request):
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    if not cluster_id.isdigit():
+        return JSONResponse(status_code=400, content={"error": "invalid_cluster_id"})
     focus = request.query_params.get("focus", "")[:800]
     language = _normalize_language(request.query_params.get("language"))
     try:
@@ -1353,6 +1367,31 @@ def _safe_redirect(next_url: str | None) -> str:
         if p.scheme in ("http", "https") and p.netloc == bp.netloc:
             return next_url
     return home
+
+
+def _same_origin_request(request: Request) -> bool:
+    """Reject browser-initiated cross-origin state changes.
+
+    Missing Origin/Referer is allowed for non-browser clients, but if either is
+    present it must match the public base URL or request Host.
+    """
+    from urllib.parse import urlparse
+    origin = request.headers.get("origin")
+    referer = request.headers.get("referer")
+    candidate = origin or referer
+    if not candidate:
+        return True
+    allowed_hosts = {h for h in [request.headers.get("host", "").lower()] if h}
+    if auth.PUBLIC_BASE:
+        try:
+            allowed_hosts.add(urlparse(auth.PUBLIC_BASE).netloc.lower())
+        except ValueError:
+            pass
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and parsed.netloc.lower() in allowed_hosts
 
 
 _CITE_RE = re.compile(r"\[(\d{1,3})\]")
@@ -1510,7 +1549,9 @@ async def auth_callback(provider: str, request: Request):
 
 
 @app.post("/api/auth/logout")
-def auth_logout():
+def auth_logout(request: Request):
+    if not _same_origin_request(request):
+        return JSONResponse(status_code=403, content={"error": "bad_origin"})
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.COOKIE_NAME, path=auth.COOKIE_PATH)
     return resp
@@ -1542,10 +1583,18 @@ async def sessions_save(request: Request):
     user = _current_user(request)
     if not user:
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    if not _same_origin_request(request):
+        return JSONResponse(status_code=403, content={"error": "bad_origin"})
     body = await request.json()
     payload = body.get("payload")
     if not isinstance(payload, (list, dict)):
         return JSONResponse(status_code=400, content={"error": "bad_payload"})
+    try:
+        payload_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"error": "bad_payload"})
+    if payload_bytes > MAX_SESSION_PAYLOAD_BYTES:
+        return JSONResponse(status_code=413, content={"error": "payload_too_large"})
     sid = db.save_session(user.id, session_id=body.get("id"),
                           title=str(body.get("title") or "Untitled research"),
                           payload=payload)
@@ -1557,6 +1606,8 @@ def sessions_delete(session_id: str, request: Request):
     user = _current_user(request)
     if not user:
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    if not _same_origin_request(request):
+        return JSONResponse(status_code=403, content={"error": "bad_origin"})
     return {"ok": db.delete_session(user.id, session_id)}
 
 

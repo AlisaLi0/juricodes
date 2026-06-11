@@ -137,7 +137,7 @@ def handle_event(evt: dict) -> dict:
     Always succeeds with 2xx semantics so Freemius stops retrying: unknown users
     or event types are acknowledged and ignored.
     """
-    etype = (evt.get("type") or "").lower()
+    etype = (evt.get("type") or "").strip().lower()
     event_id = _event_id(evt)
     objects = evt.get("objects") or {}
     user_obj = objects.get("user") or {}
