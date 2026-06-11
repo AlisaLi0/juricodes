@@ -82,16 +82,6 @@ html, body {
 .hist-item .ht-type { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .history:empty::after { content: "No research yet"; color: var(--muted); font-size: 12px; padding: 6px 10px; display: block; }
 
-.side-foot {
-  border-top: 1px solid var(--line);
-  padding: 12px 18px;
-  display: flex; flex-direction: column; gap: 3px;
-  font-size: 11.5px;
-}
-.side-foot a { color: var(--accent-2); text-decoration: none; }
-.side-foot a:hover { text-decoration: underline; }
-.side-foot .muted { color: var(--muted); }
-
 /* ── Main column ──────────────────────────────────────────────── */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
