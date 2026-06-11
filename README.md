@@ -53,6 +53,99 @@ server/
 Per turn: **route** (LLM → search plan) → **search** (CourtListener → real cases)
 → **organize** (LLM streams an answer grounded only in those cases).
 
+## Answer Flow
+
+Default `chat` mode is a multi-step grounded research flow, not a direct LLM
+answer. The LLM plans/refines/explains, while legal claims are grounded in
+retrieved primary-law sources.
+
+```mermaid
+flowchart TD
+  A[User submits question] --> B[Frontend POST /api/chat]
+  B --> B1[messages + mode + language]
+  B --> B2[signed cookie + CSRF token]
+  B --> C{Authenticated and CSRF valid?}
+  C -- No --> C1[401/403]
+  C -- Yes --> D{Request valid?}
+  D -- No --> D1[400/413]
+  D -- Yes --> E[Resolve plan and atomically consume 1 question]
+  E --> F{Quota available?}
+  F -- No --> F1[402 quota_exceeded]
+  F -- Yes --> G{mode}
+
+  G -- chat --> H[LLM route JSON]
+  G -- toolkit modes --> T[Direct tool path]
+  G -- brief --> BR[Brief Review path]
+  G -- laws --> LW[US Code + CFR search]
+
+  H --> I{Need clarification?}
+  I -- Yes --> I1[Send clarify SSE event and stop]
+  I -- No --> J[LLM research_plan JSON]
+  J --> K[Split into 1-4 legal issues]
+  K --> L[Send research_plan SSE event]
+
+  L --> M[Search CourtListener per issue]
+  M --> N[LLM relevance assessment]
+  N --> O{Results on point?}
+  O -- No, attempts remain --> P[Refine query and search again]
+  P --> M
+  O -- Yes or max attempts --> Q[Collect issue cases]
+
+  Q --> R[Deduplicate, rank, keep top 10]
+  R --> S[Attach treatment-lite signals]
+  S --> U{Federal statute/regulation query?}
+  U -- Yes --> U1[Search US Code + eCFR]
+  U -- No --> V[Use case sources only]
+  U1 --> V
+
+  V --> W{Any real sources found?}
+  W -- No --> W1[Refund consumed question]
+  W1 --> W2[Send no-results answer]
+  W -- Yes --> X[Send cases/statutes SSE events]
+  X --> Y[LLM organize final answer]
+  Y --> Y1[Prompt includes only retrieved cases/statutes]
+  Y1 --> Y2[Answer in selected language]
+  Y2 --> Y3[Keep case names, citations, quotes, URLs in English]
+  Y3 --> Z[Stream token SSE events]
+  Z --> AA[Frontend renders safe Markdown + clickable citations]
+  AA --> AB[Backend citation-range integrity check]
+  AB --> AC[done SSE event]
+  AC --> AD[Frontend autosaves session]
+```
+
+Brief Review follows the same source-first rule, but the pipeline starts by
+extracting and checking citations from pasted legal text.
+
+```mermaid
+flowchart TD
+  A[User selects Brief Review] --> B[Paste brief, memo, argument, or legal text]
+  B --> C[POST /api/chat mode=brief]
+  C --> D[Auth, CSRF, quota, validation]
+  D --> E[Regex extract reporter citations and full case names]
+  E --> E1[Capture nearby quote and context]
+  E --> F{References found?}
+  F -- No --> F1[Refund question and return empty review]
+  F -- Yes --> G[Resolve each reference in CourtListener]
+  G --> H{Resolved to real case?}
+  H -- No --> H1[Row status: Case unresolved]
+  H -- Yes --> I[Attach treatment-lite]
+  I --> J{Nearby quote?}
+  J -- Yes --> J1[Verify quote against real opinion text]
+  J -- No --> J2[Quote status: no nearby quote]
+  J1 --> K[Fetch focused passages]
+  J2 --> K
+  K --> L[LLM support-check JSON]
+  L --> L1[Supports / Weak support / Unclear / Needs review]
+  L1 --> M[Build Brief Review table]
+  H1 --> M
+  M --> N[Send brief_review SSE event]
+  N --> O[Frontend renders extracted reference, authority, support, quote check]
+```
+
+The user can then inspect each source: open the full opinion, expand details and
+PDF inventory, view focused passages and citing cases, copy citations, export a
+Word-readable memo, or verify another quote against the real opinion text.
+
 ## Configuration (env)
 
 | var | default | purpose |
