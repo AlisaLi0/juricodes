@@ -156,6 +156,42 @@ def _normalize_for_match(text: str) -> str:
     return text
 
 
+def _opinion_body(opinion: dict) -> str:
+    body = (opinion.get("plain_text") or "").strip()
+    if body:
+        return body
+    html = opinion.get("html_with_citations") or opinion.get("html") or opinion.get("xml_harvard") or ""
+    body = re.sub(r"<[^>]+>", " ", html)
+    body = re.sub(r"\s+", " ", body).strip()
+    return body
+
+
+def _focused_passages_from_text(text: str, focus: str = "", *, limit: int = 3) -> list[dict]:
+    if not text:
+        return []
+    terms = [t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9']{3,}", (focus or "").lower())
+             if t not in _STOPWORDS]
+    chunks = []
+    raw_parts = re.split(r"\n{2,}|(?<=[.;!?])\s+(?=[A-Z])", text)
+    for part in raw_parts:
+        clean = re.sub(r"\s+", " ", part).strip()
+        if len(clean) < 80:
+            continue
+        chunks.append(clean[:900])
+        if len(chunks) >= 120:
+            break
+    if not chunks:
+        return []
+    scored = []
+    for i, chunk in enumerate(chunks):
+        low = chunk.lower()
+        score = sum(1 for t in terms if t in low)
+        scored.append((score, -i, chunk))
+    scored.sort(reverse=True)
+    return [{"text": chunk, "score": int(score), "source": "opinion text"}
+            for score, _, chunk in scored[:limit]]
+
+
 
 def _build_query(query: str, mode: str) -> str:
     """Shape a raw user query into CourtListener search syntax for a given mode.
@@ -355,33 +391,7 @@ class CourtListener:
         embedding reranker can replace it later.
         """
         text, fetched, total = await self.opinion_text(cluster_id)
-        if not text:
-            return []
-        terms = [t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9']{3,}", (focus or "").lower())
-                 if t not in _STOPWORDS]
-        chunks = []
-        # Split on paragraph breaks first, then sentence-ish boundaries.
-        raw_parts = re.split(r"\n{2,}|(?<=[.;!?])\s+(?=[A-Z])", text)
-        for part in raw_parts:
-            clean = re.sub(r"\s+", " ", part).strip()
-            if len(clean) < 80:
-                continue
-            chunks.append(clean[:900])
-            if len(chunks) >= 120:
-                break
-        if not chunks:
-            return []
-        scored = []
-        for i, chunk in enumerate(chunks):
-            low = chunk.lower()
-            score = sum(1 for t in terms if t in low)
-            # Prefer earlier majority/lead passages when no focus terms hit.
-            scored.append((score, -i, chunk))
-        scored.sort(reverse=True)
-        out = []
-        for score, _, chunk in scored[:limit]:
-            out.append({"text": chunk, "score": int(score), "source": "opinion text"})
-        return out
+        return _focused_passages_from_text(text, focus, limit=limit)
 
     async def case_details(self, cluster_id: str, *, focus: str = "") -> dict:
         """Return source-backed case metadata + opinion inventory/PDF links.
@@ -411,6 +421,7 @@ class CourtListener:
         opinions: list[dict] = []
         has_pdf = False
         has_text = False
+        text_parts: list[str] = []
         for oid, op in zip(op_ids, details):
             if isinstance(op, Exception) or not isinstance(op, dict):
                 continue
@@ -418,7 +429,10 @@ class CourtListener:
             pdf = op.get("download_url") or op.get("local_path") or ""
             if pdf and pdf.startswith("/"):
                 pdf = f"{CL_WEB}{pdf}"
-            op_has_text = bool((op.get("plain_text") or op.get("html_with_citations") or op.get("html") or "").strip())
+            body = _opinion_body(op)
+            op_has_text = bool(body)
+            if body:
+                text_parts.append(body)
             has_text = has_text or op_has_text
             has_pdf = has_pdf or (isinstance(pdf, str) and pdf.startswith("http"))
             opinions.append({
@@ -433,7 +447,7 @@ class CourtListener:
         if citations and isinstance(citations[0] if isinstance(citations, list) else None, dict):
             citations = [c.get("cite") or c.get("citation") or "" for c in citations]
         citing = await self.citing_cases(cid, limit=5)
-        passages = await self.focused_passages(cid, focus, limit=3)
+        passages = _focused_passages_from_text("\n\n".join(text_parts), focus, limit=3)
         return {
             "cluster_id": cid,
             "title": cluster.get("case_name") or cluster.get("caseName") or cluster.get("case_name_full") or "",
