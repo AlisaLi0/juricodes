@@ -1013,8 +1013,11 @@ async function startCheckout(planId, pricingId, cycle, button) {
   showToast('Opening secure checkout…', 1400);
   try {
     await loadFreemius();
-    const handler = new window.FS.Checkout({
-      product_id: billingCfg.product_id,
+    if (!window.FS || !window.FS.Checkout || !window.FS.Checkout.configure || !window.FS.Checkout.open) {
+      throw new Error('Freemius checkout did not initialize');
+    }
+    window.FS.Checkout.configure({
+      plugin_id: billingCfg.product_id,
       public_key: billingCfg.public_key,
     });
     const opts = {
@@ -1030,10 +1033,11 @@ async function startCheckout(planId, pricingId, cycle, button) {
       },
       success: () => { closeUpgradeModal(); },
     };
-    handler.open(opts);
+    window.FS.Checkout.open(opts);
   } catch (err) {
     console.error('Freemius checkout failed', err);
-    showToast('Checkout could not load. Please disable script blockers and try again.');
+    showToast('Checkout popup could not load. Opening hosted checkout…', 2200);
+    location.href = hostedCheckoutUrl(planId, pricingId, cycle);
   } finally {
     if (button) {
       button.disabled = false;
@@ -1041,6 +1045,17 @@ async function startCheckout(planId, pricingId, cycle, button) {
       button.removeAttribute('aria-busy');
     }
   }
+}
+
+function hostedCheckoutUrl(planId, pricingId, cycle) {
+  const productId = encodeURIComponent(billingCfg.product_id);
+  const url = new URL(`https://checkout.freemius.com/product/${productId}/plan/${encodeURIComponent(planId)}/`);
+  if (pricingId) url.searchParams.set('pricing_id', pricingId);
+  if (cycle) url.searchParams.set('billing_cycle', cycle);
+  if (billingCfg.sandbox) url.searchParams.set('sandbox', 'true');
+  if (me && me.email) url.searchParams.set('user_email', me.email);
+  url.searchParams.set('name', 'JuriCodex');
+  return url.toString();
 }
 
 function openBillingPortal() {
