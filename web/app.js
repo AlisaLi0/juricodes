@@ -2593,7 +2593,8 @@ async function startCheckout(planId, pricingId, cycle, button) {
       billing_cycle: cycle || undefined,
       sandbox: !!billingCfg.sandbox,
       name: 'JuriCodex',
-      user_email: (me && me.email) || undefined,
+      // Do not prefill user_email: Freemius can treat merely opening checkout
+      // as an abandoned cart and email the signed-in address if checkout is not completed.
       purchaseCompleted: () => {
         // Freemius confirms purchase; the webhook flips our DB. Re-pull our state.
         setTimeout(() => loadAuth(), 1500);
@@ -2620,7 +2621,6 @@ function hostedCheckoutUrl(planId, pricingId, cycle) {
   if (pricingId) url.searchParams.set('pricing_id', pricingId);
   if (cycle) url.searchParams.set('billing_cycle', cycle);
   if (billingCfg.sandbox) url.searchParams.set('sandbox', 'true');
-  if (me && me.email) url.searchParams.set('user_email', me.email);
   url.searchParams.set('name', 'JuriCodex');
   return url.toString();
 }

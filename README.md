@@ -37,6 +37,15 @@ written in that language. US case names, reporter citations, statute/regulation
 citations, URLs, and quoted source text stay in their original English so the
 primary law remains verifiable.
 
+## Checkout Notes
+
+Freemius checkout is opened without pre-filling the signed-in user's email. The
+app still requires a real verified account email before showing checkout, but the
+email is not passed into the checkout URL or SDK options because Freemius may send
+abandoned-checkout reminder emails when a cart is opened and not completed. The
+buyer enters/uses their email inside Freemius checkout, and the webhook still
+matches purchases by payer email.
+
 ## Architecture
 
 ```
