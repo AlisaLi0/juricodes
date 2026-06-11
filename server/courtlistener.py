@@ -17,6 +17,10 @@ CL_API = "https://www.courtlistener.com/api/rest/v4"
 CL_WEB = "https://www.courtlistener.com"
 _USER_AGENT = "leagle-chat/0.1 (+https://github.com/AlisaLi0/leagle-chat)"
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+_STOPWORDS = {
+    "the", "and", "for", "that", "with", "this", "from", "into", "case",
+    "court", "law", "legal", "brief", "memo", "cited", "citation", "quote",
+}
 
 _SORT_MAP = {
     "relevance": "score desc",
@@ -263,6 +267,21 @@ class CourtListener:
         last = (results[0].get("dateFiled") or "")[:10] if results else ""
         return count, last
 
+    async def citing_cases(self, cluster_id: str, *, limit: int = 5) -> dict:
+        """Return later cases citing this cluster (best-effort)."""
+        cid = str(cluster_id or "").strip()
+        if not cid.isdigit():
+            return {"count": 0, "cases": []}
+        try:
+            data = await self._get(
+                "/search/",
+                {"q": f"cites:({cid})", "type": "o", "order_by": "dateFiled desc"},
+            )
+        except Exception:
+            return {"count": 0, "cases": []}
+        rows = (data.get("results") or [])[:limit]
+        return {"count": int(data.get("count") or 0), "cases": [self._parse(r).to_dict() for r in rows]}
+
     async def attach_treatment(self, cases: list[Case], *, top: int = 6) -> None:
         """Populate cited_by / last_cited / treatment for the first `top` cases,
         concurrently. Mutates the Case objects in place. Best-effort: any case
@@ -328,7 +347,43 @@ class CourtListener:
             row = {**row, "cluster_id": row.get("id")}
         return self._parse(row)
 
-    async def case_details(self, cluster_id: str) -> dict:
+    async def focused_passages(self, cluster_id: str, focus: str = "", *, limit: int = 3) -> list[dict]:
+        """Return short source passages relevant to a focus string.
+
+        MVP: fetch real opinion text, split into readable windows, and score by
+        overlap with non-stopword focus terms. This is deterministic; an LLM or
+        embedding reranker can replace it later.
+        """
+        text, fetched, total = await self.opinion_text(cluster_id)
+        if not text:
+            return []
+        terms = [t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9']{3,}", (focus or "").lower())
+                 if t not in _STOPWORDS]
+        chunks = []
+        # Split on paragraph breaks first, then sentence-ish boundaries.
+        raw_parts = re.split(r"\n{2,}|(?<=[.;!?])\s+(?=[A-Z])", text)
+        for part in raw_parts:
+            clean = re.sub(r"\s+", " ", part).strip()
+            if len(clean) < 80:
+                continue
+            chunks.append(clean[:900])
+            if len(chunks) >= 120:
+                break
+        if not chunks:
+            return []
+        scored = []
+        for i, chunk in enumerate(chunks):
+            low = chunk.lower()
+            score = sum(1 for t in terms if t in low)
+            # Prefer earlier majority/lead passages when no focus terms hit.
+            scored.append((score, -i, chunk))
+        scored.sort(reverse=True)
+        out = []
+        for score, _, chunk in scored[:limit]:
+            out.append({"text": chunk, "score": int(score), "source": "opinion text"})
+        return out
+
+    async def case_details(self, cluster_id: str, *, focus: str = "") -> dict:
         """Return source-backed case metadata + opinion inventory/PDF links.
 
         Best-effort and conservative: if a field or PDF link is absent, omit it
@@ -354,6 +409,8 @@ class CourtListener:
             return_exceptions=True,
         ) if op_ids else []
         opinions: list[dict] = []
+        has_pdf = False
+        has_text = False
         for oid, op in zip(op_ids, details):
             if isinstance(op, Exception) or not isinstance(op, dict):
                 continue
@@ -361,17 +418,22 @@ class CourtListener:
             pdf = op.get("download_url") or op.get("local_path") or ""
             if pdf and pdf.startswith("/"):
                 pdf = f"{CL_WEB}{pdf}"
+            op_has_text = bool((op.get("plain_text") or op.get("html_with_citations") or op.get("html") or "").strip())
+            has_text = has_text or op_has_text
+            has_pdf = has_pdf or (isinstance(pdf, str) and pdf.startswith("http"))
             opinions.append({
                 "id": oid,
                 "type": op.get("type") or op.get("type_name") or "opinion",
                 "author": op.get("author_str") or op.get("author") or "",
                 "url": f"{CL_WEB}{op_abs}" if op_abs else "",
                 "pdf_url": pdf if isinstance(pdf, str) and pdf.startswith("http") else "",
-                "has_text": bool((op.get("plain_text") or op.get("html_with_citations") or op.get("html") or "").strip()),
+                "has_text": op_has_text,
             })
         citations = cluster.get("citations") or cluster.get("citation") or []
         if citations and isinstance(citations[0] if isinstance(citations, list) else None, dict):
             citations = [c.get("cite") or c.get("citation") or "" for c in citations]
+        citing = await self.citing_cases(cid, limit=5)
+        passages = await self.focused_passages(cid, focus, limit=3)
         return {
             "cluster_id": cid,
             "title": cluster.get("case_name") or cluster.get("caseName") or cluster.get("case_name_full") or "",
@@ -383,6 +445,15 @@ class CourtListener:
             "url": f"{CL_WEB}{abs_url}" if abs_url else "",
             "opinions_total": len(op_ids),
             "opinions": opinions,
+            "source_availability": {
+                "has_text": has_text,
+                "has_pdf": has_pdf,
+                "opinions_found": len(opinions),
+                "opinions_total": len(op_ids),
+                "partial": len(opinions) < len(op_ids),
+            },
+            "citing_cases": citing,
+            "focused_passages": passages,
         }
 
     async def negative_treatment(self, cluster_id: str, case_name: str = "") -> tuple[int, list[dict]]:

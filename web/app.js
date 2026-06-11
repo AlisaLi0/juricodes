@@ -242,6 +242,9 @@ function renderCases(casesEl, turnId, cases) {
 
 function renderCaseDetailsBox(box, details) {
   const citations = (details.citations || []).slice(0, 6).join(' · ');
+  const availability = details.source_availability || {};
+  const citing = (details.citing_cases || {}).cases || [];
+  const passages = details.focused_passages || [];
   const opinions = (details.opinions || []).map((op) => `
     <li>
       <span class="op-type">${escapeHtml(op.type || 'opinion')}</span>
@@ -251,13 +254,21 @@ function renderCaseDetailsBox(box, details) {
       ${op.pdf_url ? `<a href="${escapeHtml(op.pdf_url)}" target="_blank" rel="noopener">PDF</a>` : ''}
     </li>`).join('');
   box.innerHTML = `
+    <div class="source-availability">
+      <span class="avail ${availability.has_text ? 'yes' : 'no'}">${availability.has_text ? 'Opinion text' : 'No text'}</span>
+      <span class="avail ${availability.has_pdf ? 'yes' : 'no'}">${availability.has_pdf ? 'PDF available' : 'No PDF'}</span>
+      <span class="avail">${availability.opinions_found || 0}/${availability.opinions_total || 0} opinions checked</span>
+      ${availability.partial ? '<span class="avail warn">Partial inventory</span>' : ''}
+    </div>
     <div class="detail-grid">
       ${details.date ? `<div><b>Date</b><span>${escapeHtml(details.date)}</span></div>` : ''}
       ${details.court ? `<div><b>Court</b><span>${escapeHtml(details.court)}</span></div>` : ''}
       ${details.docket_number ? `<div><b>Docket</b><span>${escapeHtml(details.docket_number)}</span></div>` : ''}
       ${details.precedential_status ? `<div><b>Status</b><span>${escapeHtml(details.precedential_status)}</span></div>` : ''}
     </div>
-    ${citations ? `<div class="detail-cites"><b>Citations</b> ${escapeHtml(citations)}</div>` : ''}
+    ${citations ? `<div class="detail-cites"><b>Citations</b> ${escapeHtml(citations)} <button type="button" class="copy-cite" data-cite="${escapeHtml((details.citations || [])[0] || citations)}">Copy citation</button></div>` : ''}
+    ${passages.length ? `<div class="focused-passages"><b>Focused passages</b>${passages.map((p) => `<blockquote>${escapeHtml(p.text || '')}</blockquote>`).join('')}</div>` : ''}
+    ${citing.length ? `<div class="citing-cases"><b>Citing cases</b><ul>${citing.map((c) => `<li>${escapeHtml(c.title || '')}${c.date ? ` <span>${escapeHtml(c.date)}</span>` : ''}${c.url ? ` <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">open</a>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${opinions ? `<div class="opinion-inventory"><b>Opinion inventory</b><ul>${opinions}</ul></div>` : '<div class="detail-empty">No opinion inventory was available.</div>'}`;
 }
 
@@ -276,6 +287,8 @@ function renderBriefReview(turnEl, payload) {
   const body = rows.map((r, i) => {
     const c = r.case || {};
     const qc = r.quote_check || null;
+    const sc = r.support_check || {};
+    const status = r.status || sc.status || (c.title ? 'Needs review' : 'Case unresolved');
     const quoteStatus = qc
       ? (qc.found ? `Found (${escapeHtml(qc.match || 'match')})` : `Not found (${escapeHtml(qc.match || 'check')})`)
       : (r.ref && r.ref.quote ? 'Quote not checked' : 'No nearby quote');
@@ -284,16 +297,52 @@ function renderBriefReview(turnEl, payload) {
       <td><span class="br-num">${i + 1}</span></td>
       <td><div class="br-ref">${escapeHtml((r.ref || {}).text || '')}</div><div class="br-kind">${escapeHtml((r.ref || {}).kind || '')}</div></td>
       <td>${c.title ? `<div class="br-case">${escapeHtml(c.title)}</div><div class="br-meta">${escapeHtml(c.court || '')}${c.date ? ' · ' + escapeHtml(c.date) : ''}</div>${(c.citations || []).length ? `<div class="br-cites">${escapeHtml((c.citations || []).slice(0, 2).join(' · '))}</div>` : ''}` : '<span class="br-miss">Unresolved</span>'}</td>
+      <td><span class="support-status ${supportClass(status)}">${escapeHtml(status)}</span>${sc.reason ? `<div class="br-reason">${escapeHtml(sc.reason)}</div>` : ''}${(r.ref || {}).proposition ? `<div class="br-prop">${escapeHtml((r.ref || {}).proposition.slice(0, 220))}</div>` : ''}</td>
       <td class="${statusClass}">${escapeHtml(quoteStatus)}${(r.ref || {}).quote ? `<div class="br-quote">“${escapeHtml((r.ref || {}).quote.slice(0, 180))}”</div>` : ''}</td>
-      <td>${c.id ? `<button type="button" class="details-toggle" data-cluster="${escapeHtml(String(c.id))}">Details / PDFs</button><div class="case-details" style="display:none"></div>` : ''}</td>
+      <td>${c.id ? `<button type="button" class="details-toggle" data-cluster="${escapeHtml(String(c.id))}" data-focus="${escapeHtml((r.ref || {}).quote || (r.ref || {}).context || (r.ref || {}).text || '')}">Details / PDFs</button><div class="case-details" style="display:none"></div>` : ''}</td>
     </tr>`;
   }).join('');
   panel.innerHTML = `
     <div class="auth-head">Brief Review <span class="cnt">· ${rows.length} reference${rows.length === 1 ? '' : 's'}</span></div>
     <div class="brief-table-wrap"><table class="brief-table">
-      <thead><tr><th></th><th>Extracted reference</th><th>Resolved authority</th><th>Quote check</th><th>Source</th></tr></thead>
+      <thead><tr><th></th><th>Extracted reference</th><th>Resolved authority</th><th>Status</th><th>Quote check</th><th>Source</th></tr></thead>
       <tbody>${body}</tbody>
     </table></div>`;
+}
+
+function supportClass(status) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('supports')) return 'support-ok';
+  if (s.includes('weak')) return 'support-weak';
+  if (s.includes('unresolved') || s.includes('not found')) return 'support-bad';
+  return 'support-review';
+}
+
+function renderCitationExtract(turnEl, payload) {
+  let panel = turnEl.querySelector('.citation-extract');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'citation-extract';
+    turnEl.querySelector('.answer')?.insertAdjacentElement('beforebegin', panel);
+  }
+  const refs = payload.refs || [];
+  const rows = refs.map((r, i) => `<tr><td><span class="br-num">${i + 1}</span></td><td><div class="br-ref">${escapeHtml(r.text || '')}</div><div class="br-kind">${escapeHtml(r.kind || '')}</div></td><td>${escapeHtml((r.context || '').slice(0, 260))}</td></tr>`).join('');
+  panel.innerHTML = `<div class="auth-head">Citation Extractor <span class="cnt">· ${refs.length} reference${refs.length === 1 ? '' : 's'}</span></div>
+    ${refs.length ? `<div class="brief-table-wrap"><table class="brief-table"><thead><tr><th></th><th>Reference</th><th>Context</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="answer note">No references detected.</div>'}`;
+}
+
+function renderResearchPlan(turnEl, plan) {
+  let panel = turnEl.querySelector('.research-plan');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'research-plan';
+    turnEl.querySelector('.authorities')?.insertAdjacentElement('beforebegin', panel);
+  }
+  const issues = plan.issues || [];
+  panel.innerHTML = `<div class="auth-head">Research plan <span class="cnt">· ${issues.length} issue${issues.length === 1 ? '' : 's'}</span></div>
+    <div class="plan-box"><p>${escapeHtml(plan.summary || 'Search primary-law authorities and organize the answer.')}</p>
+    ${issues.length ? `<ol>${issues.map((x) => `<li><b>${escapeHtml(x.label || 'Issue')}</b><span>${escapeHtml(x.query || '')}</span></li>`).join('')}</ol>` : ''}
+    ${(plan.depends_on || []).length ? `<div class="depends"><b>Depends on</b> ${escapeHtml((plan.depends_on || []).join('; '))}</div>` : ''}</div>`;
 }
 
 function renderStatutes(listEl, turnId, statutes) {
@@ -330,6 +379,7 @@ chat.addEventListener('click', async (e) => {
   if (!btn) return;
   const box = btn.parentElement.querySelector('.case-details');
   const clusterId = btn.dataset.cluster || '';
+  const focus = btn.dataset.focus || '';
   if (!box || !clusterId) return;
   if (box.style.display !== 'none' && box.innerHTML) {
     box.style.display = 'none';
@@ -339,7 +389,8 @@ chat.addEventListener('click', async (e) => {
   box.className = 'case-details loading';
   box.textContent = 'Loading case details…';
   try {
-    const resp = await api('/api/case-details/' + encodeURIComponent(clusterId));
+    const qs = focus ? ('?focus=' + encodeURIComponent(focus)) : '';
+    const resp = await api('/api/case-details/' + encodeURIComponent(clusterId) + qs);
     if (resp.status === 401) { me = null; renderAccount(); openLoginModal(); box.textContent = ''; return; }
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const details = await resp.json();
@@ -349,6 +400,17 @@ chat.addEventListener('click', async (e) => {
     box.className = 'case-details vr-warn';
     box.textContent = 'Could not load details right now.';
   }
+});
+
+chat.addEventListener('click', (e) => {
+  const btn = e.target.closest('.copy-cite');
+  if (!btn) return;
+  const cite = btn.dataset.cite || '';
+  if (!cite || !navigator.clipboard) return;
+  navigator.clipboard.writeText(cite).then(() => {
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Copy citation'; }, 1200);
+  }).catch(() => {});
 });
 
 // Copy a turn's reasoning to the clipboard.
@@ -556,6 +618,11 @@ async function send(text) {
           t.statusText.textContent = obj.message || '…';
           if (/^search/i.test(obj.message || '')) setStep(t.el, 'search', 'active', true);
           else setStep(t.el, 'analyze', 'active');
+        } else if (ev === 'research_plan') {
+          setStep(t.el, 'analyze', 'done');
+          setStep(t.el, 'search', 'active');
+          renderResearchPlan(t.el, obj);
+          scrollDown();
         } else if (ev === 'clarify') {
           clarified = obj.question || '';
           setStep(t.el, 'analyze', 'done');
@@ -586,6 +653,11 @@ async function send(text) {
           setStep(t.el, 'authorities', 'done', true);
           setStep(t.el, 'answer', 'active');
           renderBriefReview(t.el, obj);
+          scrollDown();
+        } else if (ev === 'citation_extract') {
+          setStep(t.el, 'authorities', 'done', true);
+          setStep(t.el, 'answer', 'active');
+          renderCitationExtract(t.el, obj);
           scrollDown();
         } else if (ev === 'token') {
           answerRaw += obj.text || '';
@@ -1100,6 +1172,9 @@ const TOOL_HINTS = {
   keyword: 'Enter keywords to search case law…',
   case: 'Enter a case name, e.g. Miranda v. Arizona',
   citation: 'Enter a citation, e.g. 384 U.S. 436',
+  laws: 'Describe a federal statute or regulation topic…',
+  extractor: 'Paste legal text to extract case citations and case names…',
+  resolver: 'Enter a citation, case name, short cite, docket, or messy reference…',
   brief: 'Paste a brief, memo, argument, or legal text to extract citations and verify quotes…',
 };
 document.querySelectorAll('.nav-item').forEach((b) => {

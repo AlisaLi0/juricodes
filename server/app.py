@@ -175,7 +175,10 @@ _ORGANIZE_SYSTEM = (
     "3. Be honest about limits: where the retrieved cases are mixed, distinguishable, "
     "or do not actually resolve the question, say so plainly rather than overstating. "
     "Flag where a result is uncertain or jurisdiction-specific.\n"
-    "4. These are research results the user must verify against the primary sources "
+    "4. When a research plan is provided, organize the answer around the issues "
+    "considered and be explicit about what facts/jurisdiction the analysis depends on. "
+    "End with a short 'What this depends on' section.\n"
+    "5. These are research results the user must verify against the primary sources "
     "(the linked opinions) before relying on them; for an actual decision they should "
     "consult a licensed attorney. State this briefly at the end, once. Be concise."
 )
@@ -192,6 +195,27 @@ _ASSESS_SYSTEM = (
     "If the list is empty or off-topic, relevant=false and propose a BETTER query that "
     "changes strategy - use the controlling statute or doctrine name, the cause of "
     "action, or the jurisdiction - rather than mere synonyms of the last query."
+)
+
+_RESEARCH_PLAN_SYSTEM = (
+    "You plan source-backed US legal research. Given the user's question, split it "
+    "into 2-4 legal issues only when useful, otherwise 1 issue. Return ONLY JSON: "
+    "{\"summary\":\"short research plan\",\"depends_on\":[\"jurisdiction/fact/etc\"],"
+    "\"issues\":[{\"label\":\"issue label\",\"query\":\"case-law search query\","
+    "\"court\":\"optional CourtListener court id or empty\",\"statute_query\":"
+    "\"optional federal law/rule query or empty\"}]}. Keep queries concise. "
+    "Do not invent law. If facts/jurisdiction are missing, put that in depends_on."
+)
+
+_BRIEF_SUPPORT_SYSTEM = (
+    "You are a legal citation-checking assistant. You are given a proposition from "
+    "a brief, a resolved real case, optional verified quote result, and source "
+    "passages from that case. Decide whether the case supports the proposition. "
+    "Return ONLY JSON: {\"status\":\"Supports|Weak support|Unclear|Needs review\","
+    "\"quote_accuracy\":\"Accurate|Not found|No quote|Needs review\","
+    "\"reason\":\"one concise sentence\"}. Be conservative. If the passages do "
+    "not squarely support the proposition, use Weak support or Unclear. Never say "
+    "a case supports a proposition based on the case name alone."
 )
 
 
@@ -258,7 +282,85 @@ async def _assess(question: str, cases: list) -> dict:
     return verdict
 
 
-async def _organize(question: str, cases: list, statutes: list | None = None) -> AsyncIterator[str]:
+async def _research_plan(messages: list[dict], fallback_query: str, route_plan: dict | None = None) -> dict:
+    last = next((m["content"] for m in reversed(messages) if m["role"] == "user"), fallback_query)
+    convo = [
+        {"role": "system", "content": _RESEARCH_PLAN_SYSTEM},
+        {"role": "user", "content": f"User question:\n{last}\n\nInitial router plan:\n{json.dumps(route_plan or {}, ensure_ascii=False)}"},
+    ]
+    try:
+        plan = await llm.complete_json(convo, max_tokens=650)
+    except (httpx.HTTPError, KeyError, ValueError):
+        plan = {}
+    issues = plan.get("issues") if isinstance(plan, dict) else None
+    if not isinstance(issues, list) or not issues:
+        rp = route_plan or {}
+        issues = [{
+            "label": "Primary issue",
+            "query": (rp.get("query") or fallback_query or last).strip(),
+            "court": (rp.get("court") or "").strip(),
+            "statute_query": (rp.get("statute_query") or "").strip(),
+        }]
+        plan = {"summary": "Search primary-law authorities and organize the answer.",
+                "depends_on": [], "issues": issues, "degraded": True}
+    cleaned = []
+    for i, issue in enumerate(issues[:4], 1):
+        if not isinstance(issue, dict):
+            continue
+        q = (issue.get("query") or fallback_query or last).strip()
+        if not q:
+            continue
+        cleaned.append({
+            "label": (issue.get("label") or f"Issue {i}").strip()[:120],
+            "query": q[:240],
+            "court": (issue.get("court") or "").strip()[:40],
+            "statute_query": (issue.get("statute_query") or "").strip()[:180],
+        })
+    if not cleaned:
+        cleaned = [{"label": "Primary issue", "query": fallback_query or last, "court": "", "statute_query": ""}]
+    return {"summary": (plan.get("summary") or "Research the issue with primary-law sources.")[:300],
+            "depends_on": [str(x)[:140] for x in (plan.get("depends_on") or [])[:5]],
+            "issues": cleaned}
+
+
+async def _brief_support_check(ref: dict, case: object, quote_check: dict | None, passages: list[dict]) -> dict:
+    quote = ref.get("quote") or ""
+    if quote and quote_check and not quote_check.get("found"):
+        return {"status": "Quote not found", "quote_accuracy": "Not found",
+                "reason": "The nearby quoted language was not found in the matched opinion text."}
+    if not passages:
+        return {"status": "Needs review", "quote_accuracy": "No quote" if not quote else "Needs review",
+                "reason": "No source passage was available for a reliable support check."}
+    payload = {
+        "proposition": ref.get("proposition") or ref.get("context") or ref.get("text"),
+        "reference": ref.get("text"),
+        "quote": quote,
+        "case": getattr(case, "title", ""),
+        "citations": getattr(case, "citations", []),
+        "quote_check": quote_check or {},
+        "passages": [p.get("text", "")[:900] for p in passages[:3]],
+    }
+    convo = [
+        {"role": "system", "content": _BRIEF_SUPPORT_SYSTEM},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+    try:
+        out = await llm.complete_json(convo, max_tokens=250)
+    except (httpx.HTTPError, KeyError, ValueError):
+        out = {}
+    status = out.get("status") if isinstance(out, dict) else ""
+    allowed = {"Supports", "Weak support", "Unclear", "Needs review"}
+    if status not in allowed:
+        status = "Needs review"
+    qa = out.get("quote_accuracy") if isinstance(out, dict) else ""
+    if qa not in {"Accurate", "Not found", "No quote", "Needs review"}:
+        qa = "Accurate" if quote_check and quote_check.get("found") else ("No quote" if not quote else "Needs review")
+    return {"status": status, "quote_accuracy": qa,
+            "reason": (out.get("reason") if isinstance(out, dict) else "") or "Review the source passage before relying on this citation."}
+
+
+async def _organize(question: str, cases: list, statutes: list | None = None,
+                    research_plan: dict | None = None) -> AsyncIterator[str]:
     """Stream an answer grounded only in the retrieved cases (+ any CFR sections)."""
     parts = [
         f"User question:\n{question}\n",
@@ -270,6 +372,8 @@ async def _organize(question: str, cases: list, statutes: list | None = None) ->
                  for i, s in enumerate(statutes, 1)]
         parts.append("Retrieved federal regulations (CFR) — real primary law you may "
                      "also cite, as [R1], [R2], …:\n" + "\n".join(lines))
+    if research_plan:
+        parts.append("Research plan / issues considered:\n" + json.dumps(research_plan, ensure_ascii=False))
     convo = [
         {"role": "system", "content": _ORGANIZE_SYSTEM},
         {"role": "user", "content": "\n\n".join(parts)},
@@ -332,7 +436,66 @@ async def chat(request: Request):
                 except Exception:
                     pass
 
-        # ── Brief Review: extract citations/case refs, resolve, quote-check ──
+        # ── Standalone Citation Extractor ────────────────────────────────────
+        if mode == "extractor":
+            yield _sse("status", {"message": "Extracting case citations and case names…"})
+            refs = _extract_legal_references(question)
+            if not refs:
+                refund()
+            yield _sse("citation_extract", {"count": len(refs), "refs": refs})
+            yield _sse("token", {"text": f"Citation Extractor found {len(refs)} unique case reference(s)." if refs else "No recognizable case citations or case names were found."})
+            yield _sse("done", {})
+            return
+
+        # ── Standalone Case Resolver ─────────────────────────────────────────
+        if mode == "resolver":
+            yield _sse("status", {"message": "Resolving reference to candidate cases…"})
+            kind = "citation" if _REPORTER_CITE_RE.search(question) else ("case" if " v." in question else "")
+            try:
+                if kind == "citation":
+                    cases = await cl.search(question, mode="citation", max_results=8)
+                elif kind == "case":
+                    cases = await cl.search(question, mode="case", max_results=8)
+                else:
+                    cases = await cl.search(question, mode="keyword", max_results=8)
+            except httpx.HTTPError as exc:
+                refund()
+                yield _sse("error", {"message": f"resolver failed: {exc}"})
+                yield _sse("done", {})
+                return
+            if not cases:
+                refund()
+            yield _sse("cases", {"query": question, "court": "", "count": len(cases),
+                                 "cases": [c.to_dict() for c in cases]})
+            yield _sse("token", {"text": f"Case Resolver returned {len(cases)} candidate(s). Open Details / PDFs to inspect source metadata." if cases else "No candidate case was found for that reference."})
+            yield _sse("done", {})
+            return
+
+        # ── Laws & Rules: direct US Code + CFR search ────────────────────────
+        if mode == "laws":
+            yield _sse("status", {"message": f"Searching US Code and CFR for: {question}"})
+            try:
+                code_hits, cfr_hits = await asyncio.gather(
+                    uscode.search(question, max_results=6),
+                    ecfr.search(question, max_results=6),
+                    return_exceptions=True,
+                )
+            except Exception:
+                code_hits, cfr_hits = [], []
+            statutes = []
+            if isinstance(code_hits, list):
+                statutes += code_hits
+            if isinstance(cfr_hits, list):
+                statutes += cfr_hits
+            if not statutes:
+                refund()
+            yield _sse("statutes", {"query": question, "count": len(statutes),
+                                    "statutes": [s.to_dict() for s in statutes]})
+            yield _sse("token", {"text": f"Laws & Rules Search found {len(statutes)} statute/regulation source(s)." if statutes else "No matching federal statute or regulation was found."})
+            yield _sse("done", {})
+            return
+
+        # ── Brief Review: extract refs, resolve, quote-check, support-check ──
         if mode == "brief":
             yield _sse("status", {"message": "Extracting citations and case references…"})
             refs = _extract_legal_references(question)
@@ -345,7 +508,7 @@ async def chat(request: Request):
             yield _sse("status", {"message": f"Resolving {len(refs)} reference(s) against primary-law sources…"})
 
             async def resolve_one(ref: dict) -> dict:
-                row = {"ref": ref, "case": None, "quote_check": None, "status": "unresolved"}
+                row = {"ref": ref, "case": None, "quote_check": None, "status": "Case unresolved"}
                 try:
                     case = await cl.resolve_reference(ref["text"], kind=ref["kind"])
                 except Exception:
@@ -363,6 +526,17 @@ async def chat(request: Request):
                         row["quote_check"] = await cl.verify_quote(case.id, ref["quote"])
                     except Exception:
                         row["quote_check"] = {"found": False, "match": "error", "context": ""}
+                try:
+                    passages = await cl.focused_passages(case.id, ref.get("quote") or ref.get("context") or ref["text"], limit=3)
+                except Exception:
+                    passages = []
+                row["passages"] = passages
+                try:
+                    row["support_check"] = await _brief_support_check(ref, case, row.get("quote_check"), passages)
+                    row["status"] = row["support_check"].get("status") or row["status"]
+                except Exception:
+                    row["support_check"] = {"status": "Needs review", "quote_accuracy": "Needs review", "reason": "Support check was unavailable."}
+                    row["status"] = "Needs review"
                 return row
 
             rows = await asyncio.gather(*(resolve_one(r) for r in refs), return_exceptions=True)
@@ -371,10 +545,12 @@ async def chat(request: Request):
             resolved = sum(1 for r in clean_rows if r.get("case"))
             checked = sum(1 for r in clean_rows if r.get("quote_check"))
             found = sum(1 for r in clean_rows if (r.get("quote_check") or {}).get("found"))
+            supports = sum(1 for r in clean_rows if (r.get("support_check") or {}).get("status") == "Supports")
             yield _sse("token", {"text":
                 f"Brief Review checked {len(clean_rows)} extracted reference(s): "
                 f"{resolved} resolved to source-backed cases. "
                 + (f"{found}/{checked} nearby quote(s) were found in the matched opinions. " if checked else "")
+                + f"{supports} citation(s) were marked as directly supporting the extracted proposition. "
                 + "Use the table above as a verification checklist, not legal advice."})
             yield _sse("done", {})
             return
@@ -416,38 +592,45 @@ async def chat(request: Request):
             yield _sse("done", {})
             return
 
-        query = (plan.get("query") or question).strip()
-        court = (plan.get("court") or "").strip()
+        research_plan = await _research_plan(messages, question, plan)
+        yield _sse("research_plan", research_plan)
 
-        # Search, then check the results are actually on-point; if not, let the
-        # model refine the query and search again (bounded). This is the
-        # "multi-step research, handled for you" loop.
+        # Search each planned issue, then check/refine results when needed.
         MAX_SEARCHES = 3
         cases: list = []
-        tried: set = set()
-        for attempt in range(1, MAX_SEARCHES + 1):
-            yield _sse("status", {"message": f"Searching case law for: {query}"})
-            try:
-                cases = await cl.search(query, court=court, max_results=8)
-            except httpx.HTTPError as exc:
-                refund()
-                yield _sse("error", {"message": f"search failed: {exc}"})
-                yield _sse("done", {})
-                return
-            tried.add(query.lower())
-            if attempt == MAX_SEARCHES:
-                break
-            # Ask the model whether these results answer the question.
-            verdict = await _assess(question, cases)
-            if verdict.get("relevant", True):
-                break
-            new_query = (verdict.get("query") or "").strip()
-            if not new_query or new_query.lower() in tried:
-                break  # nothing better to try
-            court = (verdict.get("court") or court).strip()
-            yield _sse("status", {"message":
-                       f"Those weren't on point - refining search: {new_query}"})
-            query = new_query
+        seen_case_ids: set[str] = set()
+        for issue in (research_plan.get("issues") or [])[:4]:
+            query = (issue.get("query") or question).strip()
+            court = (issue.get("court") or "").strip()
+            tried: set = set()
+            issue_cases: list = []
+            for attempt in range(1, MAX_SEARCHES + 1):
+                yield _sse("status", {"message": f"Searching {issue.get('label') or 'issue'}: {query}"})
+                try:
+                    issue_cases = await cl.search(query, court=court, max_results=6)
+                except httpx.HTTPError as exc:
+                    refund()
+                    yield _sse("error", {"message": f"search failed: {exc}"})
+                    yield _sse("done", {})
+                    return
+                tried.add(query.lower())
+                if attempt == MAX_SEARCHES:
+                    break
+                verdict = await _assess(question, issue_cases)
+                if verdict.get("relevant", True):
+                    break
+                new_query = (verdict.get("query") or "").strip()
+                if not new_query or new_query.lower() in tried:
+                    break
+                court = (verdict.get("court") or court).strip()
+                yield _sse("status", {"message": f"Refining {issue.get('label') or 'issue'}: {new_query}"})
+                query = new_query
+            for c in issue_cases:
+                cid = str(getattr(c, "id", ""))
+                if cid and cid not in seen_case_ids:
+                    seen_case_ids.add(cid)
+                    cases.append(c)
+        cases = sorted(cases, key=lambda c: int(getattr(c, "cite_count", 0) or 0), reverse=True)[:10]
 
         # Cytator: check how each leading case has been treated (cited by later
         # opinions, how recently) as a good-law signal. Best-effort, never fatal.
@@ -458,7 +641,14 @@ async def chat(request: Request):
             except Exception:
                 pass
 
-        yield _sse("cases", {"query": query, "court": court,
+        display_query = "; ".join(
+            i.get("query", "") for i in (research_plan.get("issues") or [])[:4]
+            if i.get("query")
+        ) or question
+        display_court = next(
+            (i.get("court", "") for i in (research_plan.get("issues") or []) if i.get("court")), ""
+        )
+        yield _sse("cases", {"query": display_query, "court": display_court,
                              "count": len(cases),
                              "cases": [c.to_dict() for c in cases]})
 
@@ -467,24 +657,33 @@ async def chat(request: Request):
         # parallel; best-effort, never fatal. US Code (the enacted law) is listed
         # before CFR (the implementing rules).
         statutes: list = []
-        statute_query = (plan.get("statute_query") or "").strip()
-        if statute_query:
+        statute_queries = []
+        for issue in (research_plan.get("issues") or [])[:4]:
+            sq = (issue.get("statute_query") or "").strip()
+            if sq and sq.lower() not in {x.lower() for x in statute_queries}:
+                statute_queries.append(sq)
+        if not statute_queries and (plan.get("statute_query") or "").strip():
+            statute_queries = [(plan.get("statute_query") or "").strip()]
+        if statute_queries:
+            statute_query = statute_queries[0]
             yield _sse("status", {"message": f"Searching federal statutes & regulations for: {statute_query}"})
             try:
-                code_hits, cfr_hits = await asyncio.gather(
-                    uscode.search(statute_query, max_results=4),
-                    ecfr.search(statute_query, max_results=4),
-                    return_exceptions=True,
-                )
+                tasks = []
+                for sq in statute_queries[:3]:
+                    tasks += [uscode.search(sq, max_results=3), ecfr.search(sq, max_results=3)]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
             except Exception:
-                code_hits, cfr_hits = [], []
+                results = []
             statutes = []
-            if isinstance(code_hits, list):
-                statutes += code_hits
-            if isinstance(cfr_hits, list):
-                statutes += cfr_hits
+            seen_stat = set()
+            for res in results:
+                if isinstance(res, list):
+                    for s in res:
+                        key = getattr(s, "url", "") or getattr(s, "citation", "")
+                        if key and key not in seen_stat:
+                            seen_stat.add(key); statutes.append(s)
             if statutes:
-                yield _sse("statutes", {"query": statute_query,
+                yield _sse("statutes", {"query": "; ".join(statute_queries),
                                         "count": len(statutes),
                                         "statutes": [s.to_dict() for s in statutes]})
 
@@ -500,7 +699,7 @@ async def chat(request: Request):
         try:
             got_any = False
             answer = ""
-            async for delta in _organize(question, cases, statutes):
+            async for delta in _organize(question, cases, statutes, research_plan):
                 got_any = True
                 answer += delta
                 yield _sse("token", {"text": delta})
@@ -590,8 +789,9 @@ async def case_details(cluster_id: str, request: Request):
     """
     if not _current_user(request):
         return JSONResponse(status_code=401, content={"error": "not_authenticated"})
+    focus = request.query_params.get("focus", "")[:800]
     try:
-        result = await cl.case_details(cluster_id)
+        result = await cl.case_details(cluster_id, focus=focus)
     except httpx.HTTPError as exc:
         return JSONResponse(status_code=502, content={"error": f"details failed: {exc}"})
     return result
@@ -721,6 +921,19 @@ def _nearest_quote(text: str, start: int, end: int) -> str:
     return best[1] if best else ""
 
 
+def _reference_context(text: str, start: int, end: int, *, pad: int = 320) -> str:
+    raw = text or ""
+    left = max(0, start - pad)
+    right = min(len(raw), end + pad)
+    lstop = max(raw.rfind(".", left, start), raw.rfind(";", left, start), raw.rfind("\n", left, start))
+    rstop_candidates = [x for x in [raw.find(".", end, right), raw.find(";", end, right), raw.find("\n", end, right)] if x != -1]
+    if lstop != -1:
+        left = max(left, lstop + 1)
+    if rstop_candidates:
+        right = min(right, min(rstop_candidates) + 1)
+    return re.sub(r"\s+", " ", raw[left:right]).strip()
+
+
 def _extract_legal_references(text: str, *, limit: int = 24) -> list[dict]:
     refs: list[dict] = []
     seen: set[str] = set()
@@ -735,6 +948,7 @@ def _extract_legal_references(text: str, *, limit: int = 24) -> list[dict]:
             "kind": kind,
             "text": clean,
             "quote": _nearest_quote(text, start, end),
+            "context": _reference_context(text, start, end),
         })
 
     for m in _REPORTER_CITE_RE.finditer(text or ""):
@@ -745,6 +959,9 @@ def _extract_legal_references(text: str, *, limit: int = 24) -> list[dict]:
         value = re.sub(r"\s+", " ", m.group(0))
         if len(value) <= 140:
             add("case", value, m.start(), m.end())
+    for ref in refs:
+        ctx = ref.get("context") or ref.get("text") or ""
+        ref["proposition"] = ctx.replace(ref.get("text", ""), "").strip(" ,;.") or ctx
     return refs
 
 
