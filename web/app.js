@@ -185,6 +185,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': 'Please double-check the citations.',
     'timeout': 'This took too long and was stopped. Please try again — if it keeps happening, try a shorter or more specific question.',
+    'retry': 'Retry',
     'connectionError': 'Connection error: {message}',
     'assistant.fallback': '(cases shown)',
     'verify.shortQuote': 'Enter a longer quote to check.',
@@ -355,6 +356,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': 'Revisa las citas con cuidado.',
     'timeout': 'Esto tardó demasiado y se detuvo. Inténtalo de nuevo; si sigue pasando, usa una pregunta más corta o específica.',
+    'retry': 'Reintentar',
     'connectionError': 'Error de conexión: {message}',
     'assistant.fallback': '(casos mostrados)',
     'verify.shortQuote': 'Ingresa una cita más larga para comprobarla.',
@@ -525,6 +527,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': '请仔细核对引用。',
     'timeout': '这次请求耗时太久，已停止。请重试；如果持续发生，请尝试更短或更具体的问题。',
+    'retry': '重试',
     'connectionError': '连接错误：{message}',
     'assistant.fallback': '（已显示案例）',
     'verify.shortQuote': '请输入更长的 quote 再检查。',
@@ -695,6 +698,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': '請仔細核對引用。',
     'timeout': '這次請求耗時太久，已停止。請重試；如果持續發生，請嘗試更短或更具體的問題。',
+    'retry': '重試',
     'connectionError': '連線錯誤：{message}',
     'assistant.fallback': '（已顯示案例）',
     'verify.shortQuote': '請輸入更長的 quote 再檢查。',
@@ -865,6 +869,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': 'Vérifiez soigneusement les citations.',
     'timeout': 'Cette opération a pris trop longtemps et a été arrêtée. Réessayez avec une question plus courte ou plus précise.',
+    'retry': 'Réessayer',
     'connectionError': 'Erreur de connexion : {message}',
     'assistant.fallback': '(dossiers affichés)',
     'verify.shortQuote': 'Saisissez une citation plus longue pour la vérifier.',
@@ -1035,6 +1040,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': 'Confira cuidadosamente as citações.',
     'timeout': 'Isso demorou demais e foi interrompido. Tente novamente com uma pergunta mais curta ou específica.',
+    'retry': 'Tentar novamente',
     'connectionError': 'Erro de conexão: {message}',
     'assistant.fallback': '(casos exibidos)',
     'verify.shortQuote': 'Digite uma citação mais longa para verificar.',
@@ -1205,6 +1211,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': '인용을 다시 확인하세요.',
     'timeout': '너무 오래 걸려 중단되었습니다. 더 짧거나 구체적인 질문으로 다시 시도하세요.',
+    'retry': '다시 시도',
     'connectionError': '연결 오류: {message}',
     'assistant.fallback': '(사건 표시됨)',
     'verify.shortQuote': '확인하려면 더 긴 quote를 입력하세요.',
@@ -1375,6 +1382,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': '引用を慎重に確認してください。',
     'timeout': '時間がかかりすぎたため停止しました。より短い、または具体的な質問で再試行してください。',
+    'retry': '再試行',
     'connectionError': '接続エラー: {message}',
     'assistant.fallback': '（事件を表示済み）',
     'verify.shortQuote': '確認するにはより長い quote を入力してください。',
@@ -1545,6 +1553,7 @@ const I18N = {
     'warning.prefix': '⚠ {message}',
     'warning.default': 'Hãy kiểm tra kỹ các trích dẫn.',
     'timeout': 'Yêu cầu mất quá lâu và đã dừng. Hãy thử lại với câu hỏi ngắn hơn hoặc cụ thể hơn.',
+    'retry': 'Thử lại',
     'connectionError': 'Lỗi kết nối: {message}',
     'assistant.fallback': '(đã hiển thị vụ án)',
     'verify.shortQuote': 'Nhập quote dài hơn để kiểm tra.',
@@ -2097,6 +2106,23 @@ function renderMarkdown(text, turnId) {
   }
   flushPara(); closeList();
   return html;
+}
+
+function renderRetryNote(el, message, question) {
+  el.className = 'answer note retry-note';
+  el.innerHTML = `<div>${escapeHtml(message)}</div><button type="button" class="retry-btn">${escapeHtml(tr('retry'))}</button>`;
+  const btn = el.querySelector('.retry-btn');
+  btn?.addEventListener('click', () => {
+    const q = String(question || '').trim();
+    if (!q || busy) return;
+    // Drop the failed user/assistant pair from the in-memory context so retry
+    // is an actual retry, not a follow-up containing the same failed turn.
+    const failedAssistant = messages[messages.length - 1];
+    if (failedAssistant && failedAssistant.role === 'assistant') messages.pop();
+    const failedUser = messages[messages.length - 1];
+    if (failedUser && failedUser.role === 'user' && failedUser.content === q) messages.pop();
+    send(q);
+  });
 }
 
 function scrollDown() { chat.scrollTop = chat.scrollHeight; }
@@ -2676,11 +2702,11 @@ async function send(text) {
     clearTimeout(idleTimer);
     t.statusEl.style.display = 'none';
     t.answerEl.style.display = '';
-    t.answerEl.className = 'answer note';
     const aborted = err && (err.name === 'AbortError' || ctrl.signal.aborted);
-    t.answerEl.textContent = aborted
+    const message = aborted
       ? tr('timeout')
       : tr('connectionError', { message: err && err.message ? err.message : 'please try again.' });
+    renderRetryNote(t.answerEl, message, text);
   } finally {
     clearTimeout(idleTimer);
   }
