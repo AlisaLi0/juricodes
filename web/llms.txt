@@ -1,0 +1,31 @@
+# JuriCodex
+
+> Source-grounded legal research for U.S. law. Find legal authorities, inspect citations, and verify quoted language.
+
+JuriCodex is a legal research workspace for U.S. law. It helps users search real cases, statutes, and regulations; review citations; verify quoted text; extract citations from pasted legal text; and organize research into a table of authorities.
+
+JuriCodex is a research tool, not legal advice. It does not replace a licensed attorney and should not be used as the sole basis for a legal decision.
+
+## Primary URLs
+
+- Home: https://juricodex.online/
+- Terms: https://juricodex.online/terms.html
+- Privacy: https://juricodex.online/privacy.html
+
+## What the product does
+
+- Legal research chat grounded in real legal authorities
+- Case, citation, keyword, concept, statute, and regulation search
+- Quote verification against source text where available
+- Brief review and citation extraction
+- Case details, source links, and table-of-authorities style output
+
+## Audience
+
+People who need to find and understand U.S. legal authorities, including pro se litigants, legal aid workers, students, researchers, and small firms.
+
+## Boundaries
+
+- JuriCodex provides legal research assistance, not legal advice.
+- Users should verify sources before relying on them.
+- Users should consult a licensed attorney for legal decisions.
