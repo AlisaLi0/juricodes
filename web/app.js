@@ -1998,6 +1998,7 @@ function setLanguage(lang) {
 }
 
 const messages = []; // conversation history: {role, content}
+const sessionTurns = []; // durable v2 history snapshots: user + answer + research artifacts
 let turnSeq = 0;
 let busy = false;
 // Active search mode: 'chat' = full leagleLM reasoning; the toolkit entries set
@@ -2121,6 +2122,8 @@ function renderRetryNote(el, message, question) {
     if (failedAssistant && failedAssistant.role === 'assistant') messages.pop();
     const failedUser = messages[messages.length - 1];
     if (failedUser && failedUser.role === 'user' && failedUser.content === q) messages.pop();
+    const failedTurn = sessionTurns[sessionTurns.length - 1];
+    if (failedTurn && failedTurn.user === q && !failedTurn.answer && !failedTurn.clarify) sessionTurns.pop();
     send(q);
   });
 }
@@ -2363,6 +2366,72 @@ function renderStatutes(listEl, turnId, statutes) {
   });
 }
 
+function renderSavedBotTurn(turn) {
+  const t = newBotTurn();
+  t.statusEl.style.display = 'none';
+  setStep(t.el, 'answer', 'done', true);
+  if (turn.researchPlan) renderResearchPlan(t.el, turn.researchPlan);
+  if (turn.cases && turn.cases.count) {
+    t.authEl.style.display = '';
+    t.authCnt.textContent = '· ' + turn.cases.count;
+    renderCases(t.casesEl, t.turnId, turn.cases.cases || []);
+  }
+  if (turn.statutes && turn.statutes.count) {
+    t.statEl.style.display = '';
+    t.statCnt.textContent = '· ' + turn.statutes.count;
+    renderStatutes(t.statListEl, t.turnId, turn.statutes.statutes || []);
+  }
+  if (turn.briefReview) renderBriefReview(t.el, turn.briefReview);
+  if (turn.citationExtract) renderCitationExtract(t.el, turn.citationExtract);
+  (turn.warnings || []).forEach((message) => {
+    const warn = document.createElement('div');
+    warn.className = 'answer-warn';
+    warn.textContent = tr('warning.prefix', { message });
+    t.answerEl.insertAdjacentElement('beforebegin', warn);
+  });
+  const answer = turn.answer || '';
+  t.answerEl.style.display = '';
+  if (turn.clarify) {
+    t.answerEl.className = 'answer clarify';
+    t.answerEl.textContent = turn.clarify;
+  } else if (answer.trim()) {
+    t.answerEl.className = 'answer rendered';
+    t.answerEl.innerHTML = renderMarkdown(answer, t.turnId);
+    t.actionsEl.style.display = '';
+  } else {
+    t.answerEl.className = 'answer note';
+    t.answerEl.textContent = tr('assistant.fallback');
+  }
+  return t;
+}
+
+function buildSessionPayload() {
+  return {
+    version: 2,
+    mode: currentMode,
+    language: currentLang,
+    messages: messages.slice(),
+    turns: sessionTurns.slice(),
+  };
+}
+
+function normalizeSessionPayload(payload) {
+  if (payload && !Array.isArray(payload) && payload.version === 2) return payload;
+  const oldMessages = Array.isArray(payload) ? payload : [];
+  const turns = [];
+  for (let i = 0; i < oldMessages.length; i += 2) {
+    const user = oldMessages[i];
+    const assistant = oldMessages[i + 1];
+    if (user && user.role === 'user') {
+      turns.push({
+        user: user.content || '',
+        answer: assistant && assistant.role === 'assistant' ? (assistant.content || '') : '',
+      });
+    }
+  }
+  return { version: 1, mode: 'chat', language: currentLang, messages: oldMessages, turns };
+}
+
 // Click a [n] / [Rn] reference -> highlight the matching authority card.
 chat.addEventListener('click', (e) => {
   const ref = e.target.closest('.cite-ref');
@@ -2539,6 +2608,17 @@ async function send(text) {
   const t = newBotTurn();
   let answerRaw = '';
   let clarified = '';
+  const turnSnapshot = {
+    user: text,
+    answer: '',
+    clarify: '',
+    researchPlan: null,
+    cases: null,
+    statutes: null,
+    briefReview: null,
+    citationExtract: null,
+    warnings: [],
+  };
 
   // Abort the stream if it stalls (no bytes) for too long, so a wedged
   // connection surfaces as a clear error instead of an endless spinner. The
@@ -2622,18 +2702,21 @@ async function send(text) {
           if (/^(search|refining|resolving|verifying|buscando|afinando|resolviendo|verificando|recherche|résolution|vérification|buscando|refinando|resolvendo|verificando|검색|해석|검증|検索|調整|確認|Tìm|Đang tìm|Đang phân giải|Đang kiểm tra|正在搜索|正在搜尋|正在优化|正在最佳化|正在把|正在驗證|正在验证)/i.test(obj.message || '')) setStep(t.el, 'search', 'active', true);
           else setStep(t.el, 'analyze', 'active');
         } else if (ev === 'research_plan') {
+          turnSnapshot.researchPlan = obj;
           setStep(t.el, 'analyze', 'done');
           setStep(t.el, 'search', 'active');
           renderResearchPlan(t.el, obj);
           scrollDown();
         } else if (ev === 'clarify') {
           clarified = obj.question || '';
+          turnSnapshot.clarify = clarified;
           setStep(t.el, 'analyze', 'done');
           t.statusEl.style.display = 'none';
           t.answerEl.style.display = '';
           t.answerEl.className = 'answer clarify';
           t.answerEl.textContent = obj.question || '';
         } else if (ev === 'cases') {
+          turnSnapshot.cases = obj;
           const authoritySuffix = currentLang === 'en'
             ? (obj.count > 1 ? 'ies' : 'y')
             : (currentLang === 'es' ? (obj.count === 1 ? '' : 'es') : '');
@@ -2649,6 +2732,7 @@ async function send(text) {
           }
           scrollDown();
         } else if (ev === 'statutes') {
+          turnSnapshot.statutes = obj;
           if (obj.count) {
             t.statEl.style.display = '';
             t.statCnt.textContent = '· ' + obj.count;
@@ -2656,11 +2740,13 @@ async function send(text) {
           }
           scrollDown();
         } else if (ev === 'brief_review') {
+          turnSnapshot.briefReview = obj;
           setStep(t.el, 'authorities', 'done', true);
           setStep(t.el, 'answer', 'active');
           renderBriefReview(t.el, obj);
           scrollDown();
         } else if (ev === 'citation_extract') {
+          turnSnapshot.citationExtract = obj;
           setStep(t.el, 'authorities', 'done', true);
           setStep(t.el, 'answer', 'active');
           renderCitationExtract(t.el, obj);
@@ -2676,6 +2762,7 @@ async function send(text) {
           t.answerEl.className = 'answer note';
           t.answerEl.textContent = obj.message || tr('error.generic');
         } else if (ev === 'warning') {
+          turnSnapshot.warnings.push(obj.message || tr('warning.default'));
           // Non-fatal advisory (e.g. a citation-integrity check). Show it as a
           // distinct caution note above/with the answer without replacing it.
           let warn = t.el.querySelector('.answer-warn');
@@ -2706,12 +2793,16 @@ async function send(text) {
     const message = aborted
       ? tr('timeout')
       : tr('connectionError', { message: err && err.message ? err.message : 'please try again.' });
+    turnSnapshot.warning = message;
     renderRetryNote(t.answerEl, message, text);
   } finally {
     clearTimeout(idleTimer);
   }
 
-  messages.push({ role: 'assistant', content: clarified || answerRaw || tr('assistant.fallback') });
+  const finalAnswer = clarified || answerRaw || tr('assistant.fallback');
+  turnSnapshot.answer = answerRaw;
+  messages.push({ role: 'assistant', content: finalAnswer });
+  sessionTurns.push(turnSnapshot);
   busy = false; sendBtn.disabled = false;
   // Persist the thread to the account when signed in (durable, cross-device).
   autosaveSession();
@@ -2745,6 +2836,7 @@ bindExamples();
 function newResearch() {
   if (busy) return;
   messages.length = 0;
+  sessionTurns.length = 0;
   turnSeq = 0;
   currentMode = 'chat';
   currentSessionId = null;
@@ -3106,7 +3198,7 @@ async function loadAuth() {
 
 async function logout() {
   try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
-  me = null; currentSessionId = null;
+  me = null; currentSessionId = null; sessionTurns.length = 0;
   renderAccount();
   refreshHistory();
 }
@@ -3339,7 +3431,7 @@ async function autosaveSession() {
     const r = await api('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: currentSessionId, title: title.slice(0, 120), payload: messages }),
+      body: JSON.stringify({ id: currentSessionId, title: title.slice(0, 120), payload: buildSessionPayload() }),
     });
     if (r.ok) { currentSessionId = (await r.json()).id; refreshHistory(); }
   } catch { /* ignore */ }
@@ -3355,22 +3447,21 @@ async function openSession(sessionId) {
     data = await r.json();
   } catch { return; }
   messages.length = 0;
+  sessionTurns.length = 0;
   turnSeq = 0;
   currentSessionId = sessionId;
-  currentMode = 'chat';
+  const payload = normalizeSessionPayload(data.payload);
+  currentMode = payload.mode || 'chat';
   chat.innerHTML = '';
-  (data.payload || []).forEach((m) => {
-    if (m.role === 'user') {
-      addUser(m.content);
-      messages.push({ role: 'user', content: m.content });
-    } else if (m.role === 'assistant') {
-      const el = document.createElement('div');
-      el.className = 'turn bot';
-      el.dataset.turn = ++turnSeq;
-      el.innerHTML = `<div class="answer rendered">${renderMarkdown(m.content, turnSeq)}</div>`;
-      chat.appendChild(el);
-      messages.push({ role: 'assistant', content: m.content });
-    }
+  (payload.turns || []).forEach((turn) => {
+    const question = turn.user || '';
+    if (!question) return;
+    addUser(question);
+    messages.push({ role: 'user', content: question });
+    renderSavedBotTurn(turn);
+    const assistantText = turn.clarify || turn.answer || tr('assistant.fallback');
+    messages.push({ role: 'assistant', content: assistantText });
+    sessionTurns.push(turn);
   });
   scrollDown();
   input.focus();
