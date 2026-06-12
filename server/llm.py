@@ -91,6 +91,7 @@ async def stream_chat(messages: list[dict], *, max_tokens: int = 900) -> AsyncIt
             resp.raise_for_status()
             saw_content = False
             reasoning_buf = []
+            finish_reason = ""
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data:"):
                     continue
@@ -99,7 +100,9 @@ async def stream_chat(messages: list[dict], *, max_tokens: int = 900) -> AsyncIt
                     break
                 try:
                     obj = json.loads(data)
-                    delta = obj["choices"][0]["delta"]
+                    choice = obj["choices"][0]
+                    delta = choice.get("delta") or {}
+                    finish_reason = choice.get("finish_reason") or finish_reason
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
                 # Prefer the real answer channel (`content`). Stream it straight
@@ -118,3 +121,5 @@ async def stream_chat(messages: list[dict], *, max_tokens: int = 900) -> AsyncIt
             # user still gets the model's grounded analysis instead of nothing.
             if not saw_content and reasoning_buf:
                 yield "".join(reasoning_buf)
+            if finish_reason == "length":
+                yield "\n\n_[Response truncated by the model's length limit. Ask a narrower follow-up question to continue the research.]_"

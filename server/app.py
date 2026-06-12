@@ -855,7 +855,7 @@ async def _organize(question: str, cases: list, statutes: list | None = None,
         {"role": "system", "content": _ORGANIZE_SYSTEM + "\n" + _language_instruction(language)},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
-    async for delta in llm.stream_chat(convo, max_tokens=900):
+    async for delta in llm.stream_chat(convo, max_tokens=10000):
         yield delta
 
 
