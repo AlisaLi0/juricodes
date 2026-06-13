@@ -9,7 +9,7 @@ JuriCodex is a research tool, not legal advice. It does not replace a licensed a
 ## Primary URLs
 
 - Home: https://juricodex.online/
-- Research note: https://juricodex.online/blog/legal-research-should-show-sources.html
+- Resource guide: https://juricodex.online/blog/legal-research-should-show-sources.html
 - Terms: https://juricodex.online/terms.html
 - Privacy: https://juricodex.online/privacy.html
 

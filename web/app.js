@@ -205,7 +205,7 @@ const I18N = {
     'cookie.text': 'We use a single essential cookie to keep you signed in. We don\'t use advertising or third-party tracking cookies. See our <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.',
     'cookie.decline': 'Essential only',
     'cookie.accept': 'Got it',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · Research tool, not legal advice.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · Research tool, not legal advice.',
   },
   es: {
     'topbar.tag': 'Encuentra la ley · verifica la fuente · entiende lo que dice',
@@ -378,7 +378,7 @@ const I18N = {
     'cookie.text': 'Usamos una sola cookie esencial para mantener tu sesión. No usamos publicidad ni cookies de rastreo de terceros. Consulta nuestra <a href="/privacy.html" target="_blank" rel="noopener">Política de privacidad</a>.',
     'cookie.decline': 'Solo esencial',
     'cookie.accept': 'Entendido',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Términos</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacidad</a> · Herramienta de investigación, no asesoría legal.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Términos</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacidad</a> · Herramienta de investigación, no asesoría legal.',
   },
   zh: {
     'topbar.tag': '找到法律 · 验证来源 · 理解其含义',
@@ -551,7 +551,7 @@ const I18N = {
     'cookie.text': '我们只使用一个必要 cookie 来保持登录状态。我们不使用广告或第三方跟踪 cookie。请查看我们的 <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>。',
     'cookie.decline': '仅必要',
     'cookie.accept': '知道了',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 调研工具，不构成法律意见。',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 调研工具，不构成法律意见。',
   },
   'zh-TW': {
     'topbar.tag': '找到法律 · 驗證來源 · 理解其含義',
@@ -724,7 +724,7 @@ const I18N = {
     'cookie.text': '我們只使用一個必要 cookie 來保持登入狀態。我們不使用廣告或第三方追蹤 cookie。請查看我們的 <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>。',
     'cookie.decline': '僅必要',
     'cookie.accept': '知道了',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 調研工具，不構成法律意見。',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 調研工具，不構成法律意見。',
   },
   fr: {
     'topbar.tag': 'Trouver le droit · vérifier la source · comprendre ce qu’elle dit',
@@ -897,7 +897,7 @@ const I18N = {
     'cookie.text': 'Nous utilisons un seul cookie essentiel pour maintenir votre connexion. Nous n’utilisons pas de cookies publicitaires ni de suivi tiers. Voir notre <a href="/privacy.html" target="_blank" rel="noopener">Politique de confidentialité</a>.',
     'cookie.decline': 'Essentiel seulement',
     'cookie.accept': 'Compris',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Conditions</a> · <a href="/privacy.html" target="_blank" rel="noopener">Confidentialité</a> · Outil de recherche, pas un avis juridique.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Conditions</a> · <a href="/privacy.html" target="_blank" rel="noopener">Confidentialité</a> · Outil de recherche, pas un avis juridique.',
   },
   pt: {
     'topbar.tag': 'Encontre a lei · verifique a fonte · entenda o que ela diz',
@@ -1070,7 +1070,7 @@ const I18N = {
     'cookie.text': 'Usamos um único cookie essencial para manter você conectado. Não usamos publicidade nem cookies de rastreamento de terceiros. Veja nossa <a href="/privacy.html" target="_blank" rel="noopener">Política de Privacidade</a>.',
     'cookie.decline': 'Somente essencial',
     'cookie.accept': 'Entendi',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Termos</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacidade</a> · Ferramenta de pesquisa, não aconselhamento jurídico.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Termos</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacidade</a> · Ferramenta de pesquisa, não aconselhamento jurídico.',
   },
   ko: {
     'topbar.tag': '법 찾기 · 출처 확인 · 의미 이해',
@@ -1243,7 +1243,7 @@ const I18N = {
     'cookie.text': '로그인 유지를 위해 필수 쿠키 하나만 사용합니다. 광고나 제3자 추적 쿠키를 사용하지 않습니다. <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>를 확인하세요.',
     'cookie.decline': '필수만',
     'cookie.accept': '확인',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 조사 도구이며 법률 자문이 아닙니다.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · 조사 도구이며 법률 자문이 아닙니다.',
   },
   ja: {
     'topbar.tag': '法律を見つける · 出典を確認する · 意味を理解する',
@@ -1416,7 +1416,7 @@ const I18N = {
     'cookie.text': 'ログイン状態を維持するため、必須 cookie を 1 つだけ使用します。広告や第三者追跡 cookie は使用しません。<a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> をご確認ください。',
     'cookie.decline': '必須のみ',
     'cookie.accept': '了解',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · リサーチツールであり法的助言ではありません。',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · リサーチツールであり法的助言ではありません。',
   },
   vi: {
     'topbar.tag': 'Tìm luật · kiểm tra nguồn · hiểu nội dung',
@@ -1589,7 +1589,7 @@ const I18N = {
     'cookie.text': 'Chúng tôi dùng một cookie thiết yếu để giữ bạn đăng nhập. Chúng tôi không dùng cookie quảng cáo hoặc theo dõi bên thứ ba. Xem <a href="/privacy.html" target="_blank" rel="noopener">Chính sách quyền riêng tư</a>.',
     'cookie.decline': 'Chỉ thiết yếu',
     'cookie.accept': 'Đã hiểu',
-    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Research note</a> · <a href="/terms.html" target="_blank" rel="noopener">Điều khoản</a> · <a href="/privacy.html" target="_blank" rel="noopener">Quyền riêng tư</a> · Công cụ nghiên cứu, không phải tư vấn pháp lý.',
+    'footer.html': 'JuriCodex · <a href="/blog/legal-research-should-show-sources.html" target="_blank" rel="noopener">Resource guide</a> · <a href="/terms.html" target="_blank" rel="noopener">Điều khoản</a> · <a href="/privacy.html" target="_blank" rel="noopener">Quyền riêng tư</a> · Công cụ nghiên cứu, không phải tư vấn pháp lý.',
   },
 };
 
